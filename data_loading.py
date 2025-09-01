@@ -1,19 +1,56 @@
 # run_pipeline.py
 import subprocess
+from pathlib import Path
+import sys
+from typing import Sequence
 
-def run_cmd(cmd: str):
-    print(f"→ {cmd}")
-    subprocess.run(cmd, shell=True, check=True)
+YEAR = 2024
+UNITS = ['B-CPE-100', 'B-CPE-110', 'B-PSU-100', 'B-PSU-200', 'B-CPE-200']
+
+def run_cmd(cmd: Sequence[str]) -> None:
+    print("→", " ".join(map(str, cmd)))
+    subprocess.run(cmd, check=True)
 
 def main():
-    # 1. Récupérer les données
-    run_cmd("python data_loading.utils/get_data.py")
+    root = Path(__file__).resolve().parent
 
-    # 2. Transformer les JSON en CSV
-    run_cmd("python data_loading.utils/all_json_to_csv.py data/data_json/ data/data_csv/")
+    # Dossiers
+    data_dir     = root / "data"
+    data_json    = data_dir / "data_json"
+    data_csv     = data_dir / "data_csv"
+    data_json.mkdir(parents=True, exist_ok=True)
+    data_csv.mkdir(parents=True, exist_ok=True)
+    data_dir.mkdir(parents=True, exist_ok=True)
 
-    # 3. Agréger les CSV par module
-    run_cmd("python data_loading.utils/aggregate_csv.py --indir data/data_csv/ --outdir data/")
+    # Scripts
+    get_data_py        = root / "data_loading.utils" / "get_data.py"
+    all_json_to_csv_py = root / "data_loading.utils" / "all_json_to_csv.py"
+    aggregate_csv_py   = root / "data_loading.utils" / "aggregate_csv.py"
+
+    # 1) Récupérer les données
+    for unit in UNITS:
+        run_cmd([
+            sys.executable, str(get_data_py),
+            "--year", str(YEAR),
+            "--unit", unit
+        ])
+
+    # 2) JSON -> CSV
+    run_cmd([
+        sys.executable, str(all_json_to_csv_py),
+        str(data_json), str(data_csv)
+    ])
+
+    # 3) Agrégation
+    run_cmd([
+        sys.executable, str(aggregate_csv_py),
+        "--indir", str(data_csv),
+        "--outdir", str(data_dir)
+    ])
 
 if __name__ == "__main__":
-    main()
+    try:
+        main()
+    except subprocess.CalledProcessError as e:
+        print(f"[ERROR] Command failed with exit code {e.returncode}")
+        sys.exit(e.returncode)
