@@ -4,8 +4,8 @@ from pathlib import Path
 import sys
 from typing import Sequence
 
-YEAR = 2024
-UNITS = ['B-CPE-100', 'B-CPE-110', 'B-PSU-100', 'B-PSU-200', 'B-CPE-200']
+YEAR = 2024 
+UNITS = ['B-CPE-100', 'B-CPE-110', 'B-PSU-100', 'B-PSU-200', 'B-CPE-200'] 
 
 def run_cmd(cmd: Sequence[str]) -> None:
     print("→", " ".join(map(str, cmd)))
@@ -28,12 +28,12 @@ def main():
     get_data_py        = root / "data_loading.utils" / "get_data.py"
     all_json_to_csv_py = root / "data_loading.utils" / "all_json_to_csv.py"
     aggregate_csv_py   = root / "data_loading.utils" / "aggregate_csv.py"
-    merged_csv_py          = root / "data_loading.utils" / "merged_csv.py"
+    merged_csv_py      = root / "data_loading.utils" / "merged_csv.py"
      # 1) Récupérer les données
     for unit in UNITS:
         run_cmd([
             sys.executable, str(get_data_py),
-            "--year", YEAR,
+            "--year", str(YEAR),
             "--unit", unit
         ])
 
