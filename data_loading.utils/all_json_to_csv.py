@@ -78,19 +78,23 @@ def convert_one(json_path: Path, csv_path: Path):
 
 def main():
     ap = argparse.ArgumentParser(description="JSON → CSV récursif")
-    ap.add_argument("input", type=Path,
-                    help="Fichier JSON ou dossier racine contenant des .json")
-    ap.add_argument("-o", "--output-dir", type=Path, default=Path("real_data_csv"),
-                    help="Dossier de sortie (défaut: real_data_csv)")
+    ap.add_argument(
+        "--input", type=Path,
+                    help="Fichier JSON ou dossier racine contenant des .json"
+                    )
+    ap.add_argument(
+        "--output", type=Path, default=Path("data_csv"),
+        help="Dossier de sortie (défaut: real_data_csv)"
+                    )
     args = ap.parse_args()
 
     if args.input.is_dir():
         base_input = args.input
-        base_output = args.output_dir
+        base_output = args.output
         json_files = sorted(base_input.rglob("*.json"))
     else:
         base_input = args.input.parent
-        base_output = args.output_dir
+        base_output = args.output
         json_files = [args.input]
 
     if not json_files:

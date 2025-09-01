@@ -38,7 +38,7 @@ args.outdir.mkdir(parents=True, exist_ok=True)
 # ────────── collecte & groupage ────────── #
 groups: dict[str, list[Path]] = defaultdict(list)
 
-for csv_path in args.indir.glob("*.csv"):
+for csv_path in args.indir.rglob("*.csv"):
     if not fnmatch.fnmatch(csv_path.name, args.filter):
         continue
     prefix = csv_path.stem.rsplit("_", 1)[0]   # tout avant le dernier "_"
