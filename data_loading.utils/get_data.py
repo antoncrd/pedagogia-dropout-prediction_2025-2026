@@ -44,7 +44,7 @@ def parse_args():
     parser.add_argument("--year",   type=int,   required=True, help="Année (ex: 2023)")
     parser.add_argument("--source", type=str,   default="intra", choices=["intra","extra"], help="Source (intra/extrasite/... selon API)")
     parser.add_argument("--unit",   type=str,   required=True, help="Code de l'unité (ex: B-CPE-100)")
-    parser.add_argument("--output", type=str,   default="real_data_json", help="Dossier de sortie")
+    parser.add_argument("--output", type=str,   default="data/data_json", help="Dossier de sortie")
     return parser.parse_args()
 
 def sanitize(text: str) -> str:
