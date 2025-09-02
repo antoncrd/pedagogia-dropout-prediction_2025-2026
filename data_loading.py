@@ -25,10 +25,10 @@ def main():
     data_fin.mkdir(parents=True, exist_ok=True)
 
     # Scripts
-    get_data_py        = root / "data_loading.utils" / "get_data.py"
-    all_json_to_csv_py = root / "data_loading.utils" / "all_json_to_csv.py"
-    aggregate_csv_py   = root / "data_loading.utils" / "aggregate_csv.py"
-    merged_csv_py      = root / "data_loading.utils" / "merged_csv.py"
+    get_data_py        = root / "utils" / "data_loading_utils" / "get_data.py"
+    all_json_to_csv_py = root / "utils" / "data_loading_utils" / "all_json_to_csv.py"
+    aggregate_csv_py   = root / "utils" / "data_loading_utils" / "aggregate_csv.py"
+    merged_csv_py      = root / "utils" / "data_loading_utils" / "merged_csv.py"
      # 1) Récupérer les données
     for unit in UNITS:
         run_cmd([

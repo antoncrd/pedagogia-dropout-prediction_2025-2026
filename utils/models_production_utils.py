@@ -1,5 +1,5 @@
 from pathlib import Path
-from typing import Tuple, Dict, Union
+from typing import Tuple, Dict, Union, Any, List
 import numpy as np
 import pandas as pd
 from tqdm.auto import tqdm
@@ -19,6 +19,8 @@ from collections import deque
 from sklearn.ensemble import RandomForestRegressor
 from lightgbm import LGBMRegressor
 from sklearn.base import clone
+from sklearn.cluster import KMeans
+from sklearn.preprocessing import StandardScaler
 
 def run_analysis_w(
     csv_file: Path | None = None,
@@ -82,19 +84,8 @@ def run_analysis_w(
     # Features & clusters
     has_cluster = "cluster" in df0.columns
     clusters_all = df0.get("cluster", pd.Series(0, index=df0.index)).astype(int).values
-    if y is None:
-        prefixes = list(dict.fromkeys(c.rsplit("_",1)[0] for c in mark_cols[::-1]))
-        static_cols = []
-    else:
-        item_cols = [c for c in df0.columns if c.startswith("Item")]
-
-        # 2) Définir les “préfixes” comme étant ces noms de colonnes
-        #    (on parcourt ensuite 1 à len(prefixes) pour ajouter les items un à un)
-        prefixes = item_cols.copy()
-        static_cols = [
-        c for c in df0.columns
-        if c not in item_cols + ["student_id", "email", "dropout", "source", "cluster"]
-        ]
+    prefixes = list(dict.fromkeys(c.rsplit("_",1)[0] for c in mark_cols[::-1]))
+    static_cols = []
     def build_X(df_sub: pd.DataFrame, prefixes: list, static_cols: list, n: int) -> np.ndarray:
         # on garde student_id + les n premiers items
         dyn_cols = [
@@ -106,10 +97,8 @@ def run_analysis_w(
 
     # Classifiers
     MODELS = {
-        "RF":  RandomForestClassifier(n_estimators=1000, random_state=42),# RandomForestClassifier(n_estimators=1000, min_samples_leaf=2, class_weight="balanced", n_jobs=-1, random_state=42),
-        "LR": LogisticRegression(max_iter=1000, class_weight="balanced",
-                                 n_jobs=-1, random_state=42),
-        "GB": GradientBoostingClassifier(random_state=42),
+        "RF":  RandomForestClassifier(n_estimators=1000, random_state=42),
+        "GB": GradientBoostingClassifier(random_state=42)
     }
 
     records: list[dict] = []
@@ -490,32 +479,3 @@ class TwoSidedSPCI_RFQuant_Offline:
         L_t = y_hat + best_low
         U_t = y_hat + best_up
         return L_t, U_t
-
-def build_X(df_sub: pd.DataFrame, prefixes: list, static_cols: list, n: int) -> np.ndarray:
-    # on garde student_id + les n premiers items
-    dyn_cols = [
-    col for col in df_sub.columns
-    if any(col.startswith(pref) for pref in prefixes[:n])
-    ]
-    keep = ["email"] + static_cols + dyn_cols
-    return df_sub[keep].set_index("email").values
-
-def pred_sets_to_bool(pred_sets, n_classes):
-    """pred_sets peut être:
-       - ndarray bool/int de shape (n_samples, n_classes)
-       - ndarray object, chaque item étant une liste/tuple/dict des labels présents
-       Retourne un ndarray bool shape (n_samples, n_classes)
-    """
-    pred_sets = np.asarray(pred_sets, dtype=object)       # assure le type
-    if pred_sets.ndim == 2 and pred_sets.dtype != object:
-        return pred_sets.astype(bool)                     # cas déjà rectangulaire
-
-    n_samples = pred_sets.shape[0]
-    out = np.zeros((n_samples, n_classes), dtype=bool)
-    for i, labels in enumerate(pred_sets):
-        # labels peut être scalaire, liste, tuple, ndarray…
-        if np.isscalar(labels):
-            out[i, int(labels)] = True
-        else:
-            out[i, [int(l) for l in labels]] = True
-    return out
