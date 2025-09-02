@@ -233,7 +233,7 @@ def build_umap_windows_by_suffix(
     return Xt, keys, X_array_hori, y_array_hori
 
 
-def build_X(df_sub: pd.DataFrame, prefixes: list, static_cols: list, n: int) -> np.ndarray:
+def build_X_s(df_sub: pd.DataFrame, prefixes: list, static_cols: list, n: int) -> np.ndarray:
     # on garde student_id + les n premiers items
     dyn_cols = [
     col for col in df_sub.columns

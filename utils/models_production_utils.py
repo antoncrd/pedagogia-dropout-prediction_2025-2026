@@ -1,9 +1,10 @@
 from pathlib import Path
-from typing import Tuple, Dict, Union, Any, List
+from typing import Tuple, Dict, Union, Any, List, Callable, Optional
 import numpy as np
 import pandas as pd
 from tqdm.auto import tqdm
 import matplotlib.pyplot as plt
+
 from sklearn.ensemble import RandomForestClassifier, GradientBoostingClassifier
 from sklearn.linear_model import LogisticRegression
 from sklearn.calibration import CalibratedClassifierCV
@@ -14,13 +15,12 @@ from mapie.metrics import (
     classification_coverage_score,
     classification_mean_width_score
 )
-from sklearn.ensemble import GradientBoostingRegressor
 from collections import deque
 from sklearn.ensemble import RandomForestRegressor
 from lightgbm import LGBMRegressor
 from sklearn.base import clone
-from sklearn.cluster import KMeans
-from sklearn.preprocessing import StandardScaler
+
+
 
 def run_analysis_w(
     csv_file: Path | None = None,
@@ -479,3 +479,321 @@ class TwoSidedSPCI_RFQuant_Offline:
         L_t = y_hat + best_low
         U_t = y_hat + best_up
         return L_t, U_t
+    
+
+
+
+class ConformalSPCIEvaluator:
+    """
+    Évalue, pour chaque n (fenêtre temporelle), plusieurs modèles de base avec :
+      - MCP (Mondrian CP sur Mapie)
+      - SPCI (modèles séquentiels déjà appris, fournis par l'utilisateur)
+      - UNION (MCP ∪ SPCI)
+      - COMBINED (sélection par 'gate' RF entre MCP, SPCI, ou union)
+
+    Paramètres
+    ----------
+    DF : DataFrame complet (sera copié et nettoyé)
+    y : array-like (n_samples,) labels binaires {0,1}
+    mark_cols : liste de colonnes 'notes' utilisées pour dériver `prefixes`
+                (ordre conservé via rsplit("_",1)[0] sur la liste renversée)
+    build_X_fn : fonction (df_subset, prefixes, static_cols, n) -> np.ndarray
+                 construit les features statiques + fenêtrées pour MCP/gate.
+    mondrian_factory : Callable[[MapieClassifier], Any]
+        Fabrique un estimateur "MondrianCP-like" avec interface:
+          .fit(X_cal, y_cal, partition=cl_cal)
+          .predict(X, alpha=..., partition=cl)
+        Ex: lambda base_mapie: MondrianCP(mapie_estimator=base_mapie)
+    spci_models : liste de modèles SPCI (longueur ≥ len(prefixes)-W-1)
+                  chaque modèle doit exposer .predict_interval(x[None, :]) -> (L, U)
+    X_array_hori : liste d'array (par pas temporel) pour les entrées SPCI,
+                   indexées comme dans votre code: X_array_hori[n - W + 1][pos]
+    threshold : float, seuil pour transformer les intervalles SPCI en p-sets binaires
+    alpha : float, niveau de mis-coverage cible pour MCP
+    W : int, taille de fenêtre (sliding-window)
+    random_state : int
+    nan_fill : valeur pour imputation simple
+    source_col : str, nom de la colonne identifiant la source ("real" filtrée pour les métriques)
+    cluster_col : str, nom de la colonne pour le partitionnement Mondrian
+    static_cols : liste de colonnes additionnelles (par défaut vide)
+    models_dict : dictionnaire de classifieurs de base à évaluer
+                  Si None, utilise RF/LR/GB par défaut
+    gate_factory : fabrique de classifieur pour la gate. Si None, RF(300, balanced)
+    verbose : bool
+
+    Méthodes
+    --------
+    run() -> pd.DataFrame
+        Retourne un DataFrame long des métriques agrégées sur n pour chaque modèle de base.
+    """
+
+    def __init__(
+        self,
+        DF: pd.DataFrame,
+        y: np.ndarray | pd.Series,
+        mark_cols: List[str],
+        build_X_fn: Callable[[pd.DataFrame, List[str], List[str], int], np.ndarray],
+        mondrian_factory: Callable[[MapieClassifier], Any],
+        spci_models: List[Any],
+        X_array_hori: List[np.ndarray],
+        threshold: float,
+        *,
+        alpha: float = 0.05,
+        W: int = 2,
+        random_state: int = 42,
+        nan_fill: float | int = 0,
+        source_col: str = "source",
+        cluster_col: str = "cluster",
+        static_cols: Optional[List[str]] = None,
+        models_dict: Optional[Dict[str, Any]] = None,
+        gate_factory: Optional[Callable[[], Any]] = None,
+        verbose: bool = True,
+    ) -> None:
+        self.alpha = alpha
+        self.W = W
+        self.random_state = random_state
+        self.threshold = threshold
+        self.source_col = source_col
+        self.cluster_col = cluster_col
+        self.verbose = verbose
+        self.build_X_fn = build_X_fn
+        self.mondrian_factory = mondrian_factory
+        self.spci_models = spci_models
+        self.X_array_hori = X_array_hori
+
+        # DF préparé
+        self.DF = DF.copy()
+        self.DF.fillna(nan_fill, inplace=True)
+        self.DF.reset_index(drop=True, inplace=True)
+
+        self.y = np.asarray(y)
+
+        # Prefixes : même logique que le script d'origine
+        self.prefixes = list(dict.fromkeys(c.rsplit("_", 1)[0] for c in mark_cols[::-1]))
+
+        self.static_cols = static_cols or []
+
+        # Modèles de base par défaut si None
+        if models_dict is None:
+            models_dict = {
+                "RF": RandomForestClassifier(
+                    n_estimators=1000,
+                    min_samples_leaf=2,
+                    class_weight="balanced",
+                    n_jobs=-1,
+                    random_state=self.random_state,
+                ),
+                "LR": LogisticRegression(
+                    solver="liblinear",
+                    max_iter=1000,
+                    class_weight="balanced",
+                    n_jobs=-1,
+                    random_state=self.random_state,
+                ),
+                "GB": GradientBoostingClassifier(random_state=self.random_state),
+            }
+        self.models_dict = models_dict
+
+        # Gate par défaut si None
+        if gate_factory is None:
+            def _default_gate():
+                return RandomForestClassifier(
+                    n_estimators=300,
+                    max_depth=None,
+                    class_weight="balanced",
+                    random_state=self.random_state,
+                    n_jobs=-1,
+                )
+            gate_factory = _default_gate
+        self.gate_factory = gate_factory
+
+    # ------------------------------------------------------------------
+    # Utilitaires internes
+    # ------------------------------------------------------------------
+    def _spci_pset_from_interval_batch(
+        self, intervals: List[Tuple[float, float]]
+    ) -> np.ndarray:
+        """
+        Convertit une liste d'intervalles (L, U) en p-sets booléens (n, 2)
+        en utilisant self.threshold comme dans le code d'origine.
+        """
+        n = len(intervals)
+        y_bool = np.zeros((n, 2), dtype=bool)
+        thr = self.threshold
+        for i, (L, U) in enumerate(intervals):
+            if thr > U:
+                y_bool[i, 1] = True
+            elif thr < L:
+                y_bool[i, 0] = True
+            else:
+                y_bool[i, :] = True
+        return y_bool
+
+    # ------------------------------------------------------------------
+    # Boucle principale
+    # ------------------------------------------------------------------
+    def run(self) -> pd.DataFrame:
+        res_metrics_all: List[pd.DataFrame] = []
+
+        for name, base_clf in self.models_dict.items():
+            covs_MCP, width_MCP = [], []
+            covs_SPCI, width_SPCI = [], []
+            covs_union, width_union = [], []
+            covs_comb, width_comb = [], []
+
+            rng = range(self.W, len(self.prefixes) - 1)
+            it = tqdm(rng, desc=name) if self.verbose else rng
+
+            for n in it:
+                # Gate
+                gate_clf = self.gate_factory()
+
+                # ---- 1) Split train / cal / test (puis split cal en cal_cp & cal_gate)
+                idx_tmp, idx_test, y_tmp, y_test, cl_tmp, cl_test = train_test_split(
+                    self.DF.index, self.y, self.DF[self.cluster_col],
+                    test_size=0.20,
+                    stratify=self.y,
+                    random_state=self.random_state,
+                )
+                idx_tr, idx_cal, y_tr, y_cal, cl_tr, cl_cal = train_test_split(
+                    idx_tmp, y_tmp, cl_tmp,
+                    test_size=0.40 / 0.80,
+                    stratify=y_tmp,
+                    random_state=self.random_state,
+                )
+                idx_cal_cp, idx_cal_gate, y_cal_cp, y_cal_gate, cl_cal_cp, cl_cal_gate = train_test_split(
+                    idx_cal, y_cal, cl_cal,
+                    test_size=0.5,
+                    stratify=y_cal,
+                    random_state=self.random_state,
+                )
+                y_cal_cp   = np.asarray(y_cal_cp)
+                y_cal_gate = np.asarray(y_cal_gate)
+                y_test     = np.asarray(y_test)
+
+                mask_real = self.DF.loc[idx_test, self.source_col].values == "real"
+
+                # ---- 2) Build features
+                X_tr       = self.build_X_fn(self.DF.loc[idx_tr],       self.prefixes, self.static_cols, n)
+                X_cal_cp   = self.build_X_fn(self.DF.loc[idx_cal_cp],   self.prefixes, self.static_cols, n)
+                X_cal_gate = self.build_X_fn(self.DF.loc[idx_cal_gate], self.prefixes, self.static_cols, n)
+                X_test     = self.build_X_fn(self.DF.loc[idx_test],     self.prefixes, self.static_cols, n)
+
+                # ---- 3) Train base clf + calibrate + MAPIE + Mondrian
+                clf = clone(base_clf)
+                clf.fit(X_tr, y_tr)
+                calib = CalibratedClassifierCV(clf, cv="prefit", method="sigmoid").fit(X_cal_cp, y_cal_cp)
+
+                base_mapie = MapieClassifier(estimator=calib, method="lac", cv="prefit")
+                mond_mapie = self.mondrian_factory(base_mapie)
+                mond_mapie.fit(X_cal_cp, y_cal_cp, partition=cl_cal_cp)
+
+                # ---- MCP on TEST
+                _, yps_van_test = mond_mapie.predict(X_test, alpha=self.alpha, partition=cl_test)
+                pset_van_test = yps_van_test[:, :, 0].astype(bool)
+
+                cov_van = classification_coverage_score(y_test[mask_real], pset_van_test[mask_real])
+                wid_van = classification_mean_width_score(pset_van_test[mask_real])
+                covs_MCP.append(cov_van); width_MCP.append(wid_van)
+                if self.verbose: print("MCP", cov_van, wid_van)
+
+                # ---- SPCI on TEST
+                model_spci = self.spci_models[n - self.W]
+                pos_test   = self.DF.index.get_indexer(idx_test)
+                X_spci_test = self.X_array_hori[n - self.W + 1][pos_test]
+                intervals = [model_spci.predict_interval(x.reshape(1, -1)) for x in X_spci_test]
+                L_preds, U_preds = zip(*intervals)
+                y_pred_bool_SPCI = self._spci_pset_from_interval_batch(intervals)
+
+                cov_spci = classification_coverage_score(y_test[mask_real], y_pred_bool_SPCI[mask_real])
+                wid_spci = classification_mean_width_score(y_pred_bool_SPCI[mask_real])
+                covs_SPCI.append(cov_spci); width_SPCI.append(wid_spci)
+                if self.verbose: print("SPCI", cov_spci, wid_spci)
+
+                # ---- UNION (MCP ∪ SPCI)
+                y_pred_bool_MCP = pset_van_test
+                y_bool_union = y_pred_bool_MCP | y_pred_bool_SPCI
+                cov_union = classification_coverage_score(y_test[mask_real], y_bool_union[mask_real])
+                wid_union = classification_mean_width_score(y_bool_union[mask_real])
+                covs_union.append(cov_union); width_union.append(wid_union)
+                if self.verbose: print("UNION :", cov_union, wid_union)
+
+                # ---- Gate training on CAL_GATE
+                _, yps_van_gate = mond_mapie.predict(X_cal_gate, alpha=self.alpha, partition=cl_cal_gate)
+                pset_cal_cls = yps_van_gate[:, :, 0].astype(bool)
+
+                pos_cal_gate = self.DF.index.get_indexer(idx_cal_gate)
+                X_spci_cal   = self.X_array_hori[n - self.W + 1][pos_cal_gate]
+                intervals_cal = [model_spci.predict_interval(x.reshape(1, -1)) for x in X_spci_cal]
+                y_pred_bool_SPCI_cal = self._spci_pset_from_interval_batch(intervals_cal)
+
+                # méta features + labels pour la gate
+                df_sel_arr, labels_g = [], []
+                for i in range(len(idx_cal_gate)):
+                    feat_vec = X_cal_gate[i]
+                    w_cls = pset_cal_cls[i].sum()
+                    w_spc = y_pred_bool_SPCI_cal[i].sum()
+                    diff  = w_cls - w_spc
+                    err_cls = int(self.y[np.where(idx_cal_gate)[0]][i] not in np.where(pset_cal_cls[i])[0]) \
+                              if False else int(y_cal_gate[i] not in np.where(pset_cal_cls[i])[0])
+                    err_spc = int(y_cal_gate[i] not in np.where(y_pred_bool_SPCI_cal[i])[0])
+
+                    if   err_cls == 0 and err_spc == 1:
+                        gate_y = 0
+                    elif err_spc == 0 and err_cls == 1:
+                        gate_y = 1
+                    elif err_cls == 0 and err_spc == 0:
+                        gate_y = 0 if w_cls < w_spc else 1
+                    else:
+                        gate_y = 2
+
+                    labels_g.append(gate_y)
+                    meta_vec = np.concatenate([feat_vec, [w_cls, w_spc, diff, err_cls, err_spc]])
+                    df_sel_arr.append(meta_vec)
+
+                X_gate_train = np.vstack(df_sel_arr)
+                gate_clf.fit(X_gate_train, np.array(labels_g))
+
+                # ---- Gate apply on TEST
+                meta_test_arr = []
+                for i in range(len(idx_test)):
+                    feat_vec = X_test[i]
+                    w_cls = y_pred_bool_MCP[i].sum()
+                    w_spc = y_pred_bool_SPCI[i].sum()
+                    diff  = w_cls - w_spc
+                    meta_vec = np.concatenate([feat_vec, [w_cls, w_spc, diff, 0, 0]])
+                    meta_test_arr.append(meta_vec)
+                X_gate_test = np.vstack(meta_test_arr)
+
+                choices = gate_clf.predict(X_gate_test)
+                pset_final = np.zeros_like(y_pred_bool_MCP, dtype=bool)
+                for i, choice in enumerate(choices):
+                    if choice == 0:
+                        pset_final[i] = y_pred_bool_MCP[i]
+                    elif choice == 1:
+                        pset_final[i] = y_pred_bool_SPCI[i]
+                    else:
+                        pset_final[i] = y_pred_bool_MCP[i] | y_pred_bool_SPCI[i]
+
+                cov_c = classification_coverage_score(y_test[mask_real], pset_final[mask_real])
+                wid_c = classification_mean_width_score(pset_final[mask_real])
+                covs_comb.append(cov_c); width_comb.append(wid_c)
+                if self.verbose: print("COMBINED", cov_c, wid_c)
+
+            # Agrégation des métriques pour ce modèle de base
+            n_vals = list(range(self.W, self.W + len(covs_MCP)))
+            df_metrics = pd.DataFrame({
+                "model":             [name] * len(n_vals),
+                "n":                 n_vals,
+                "coverage_MCP":      covs_MCP,
+                "width_MCP":         width_MCP,
+                "coverage_SPCI":     covs_SPCI,
+                "width_SPCI":        width_SPCI,
+                "coverage_union":    covs_union,
+                "width_union":       width_union,
+                "coverage_combined": covs_comb,
+                "width_combined":    width_comb,
+            })
+            res_metrics_all.append(df_metrics)
+
+        return pd.concat(res_metrics_all, ignore_index=True)
