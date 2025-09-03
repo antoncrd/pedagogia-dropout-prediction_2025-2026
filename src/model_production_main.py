@@ -14,29 +14,24 @@ Date: September 2025
 
 import argparse
 import re
-from pathlib import Path
-
-import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
-from sklearn.cluster import KMeans
-from sklearn.decomposition import PCA
-from sklearn.gaussian_process import GaussianProcessRegressor
-from sklearn.gaussian_process.kernels import RBF, WhiteKernel
-from sklearn.preprocessing import MinMaxScaler, StandardScaler
+
 from tqdm import tqdm
 
-import models_production_utils
-import umap
 
 # Import functions from models_production_utils (assuming they are defined there)
 # If not, they need to be defined or imported properly
-from models_production_utils import (
-    cluster_with_min_size,
+from utils.models_production_utils import (
     run_analysis_w,
-    build_umap_windows_by_suffix,
     OneSidedSPCI_LGBM_Offline,
     TwoSidedSPCI_RFQuant_Offline,
+)
+
+from utils.model_production_data_processing_utils import(
+    cluster_with_min_size,
+    build_umap_windows_by_suffix,
+    build_X_s
 )
 
 # Default constants
@@ -44,7 +39,7 @@ DEFAULT_YEAR = 24
 DEFAULT_N_CLUSTERS = 4
 DEFAULT_MIN_CLUSTER_SIZE = 50
 DEFAULT_DATA_FILE = "data/DATA.csv"
-DEFAULT_THRESHOLD = 0.5  # Assuming a default threshold; adjust as needed
+DEFAULT_THRESHOLD = 0.5  # Assuming a default threshold; adjust as needed 
 
 
 def load_and_preprocess_data(data_file: str, year: int) -> pd.DataFrame:
@@ -221,6 +216,7 @@ def main(
         INT_t.append([L, U])
 
     print("Models for SPCI last grade done")
+
     print("Model production pipeline completed!")
 
 

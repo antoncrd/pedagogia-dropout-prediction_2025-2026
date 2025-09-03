@@ -16,7 +16,7 @@ from mapie.metrics import (
     classification_mean_width_score
 )
 from collections import deque
-from sklearn.ensemble import RandomForestRegressor
+from sklearn.ensemble import RandomForestRegressor, GradientBoostingRegressor
 from lightgbm import LGBMRegressor
 from sklearn.base import clone
 
