@@ -1,0 +1,39 @@
+version: '3.8'
+
+services:
+  data-loading:
+    build: ./Dockerfile
+    container_name: data_loading_service
+    volumes:
+      - ./data:/app/data
+      - ./utils:/app/utils
+      - ./src:/app/src
+    command: python -u -m src.data_loading_julien --year 2024 --data_dir data --utils_dir utils
+    networks:
+      - pedagogia-network
+
+  model-production:
+    build: ./Dockerfile
+    container_name: model_production_service
+    volumes:
+      - ./data:/app/data
+      - ./utils:/app/utils
+      - ./src:/app/src
+      - ./models:/app/models
+    command: python -u -m src.model_production_main_julien --year 24 --data_file data/DATA.csv
+    depends_on:
+      - data-loading
+    networks:
+      - pedagogia-network
+
+volumes:
+  data:
+    driver: local
+  models:
+    driver: local
+  src:
+    driver: local
+
+networks:
+  pedagogia-network:
+    driver: bridge
