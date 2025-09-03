@@ -16,6 +16,8 @@ import argparse
 import re
 import numpy as np
 import pandas as pd
+import json
+from pathlib import Path
 
 from tqdm import tqdm
 
@@ -26,12 +28,12 @@ from utils.models_production_utils import (
     run_analysis_w,
     OneSidedSPCI_LGBM_Offline,
     TwoSidedSPCI_RFQuant_Offline,
+    train_combined_models
 )
 
 from utils.model_production_data_processing_utils import(
     cluster_with_min_size,
-    build_umap_windows_by_suffix,
-    build_X_s
+    build_umap_windows_by_suffix
 )
 
 # Default constants
@@ -137,7 +139,7 @@ def main(
     print("Reassignment of small clusters done")
 
     # Run analysis with clustering
-    df_detail, df_agg, y_cible, models_c = run_analysis_w(
+    df_detail, df_agg, y_cible2, models_c = run_analysis_w(
         df=df2, threshold=threshold, do_plot=False
     )
     models = {}
@@ -182,7 +184,7 @@ def main(
     df3["clusters"] = df2["clusters"]
 
     # Run analysis with clustering and next grade
-    df_detail, df_agg, y_cible, models_c_ng = run_analysis_w(
+    df_detail, df_agg, y_cible3, models_c_ng = run_analysis_w(
         df=df3, threshold=threshold, do_plot=False
     )
     models["+ clustering + SPCI next grade"] = models_c_ng
@@ -211,13 +213,41 @@ def main(
         models_lg.append(model)
 
         X_i = X_arr[i]
-        L = np.array([model.predict_interval(x.reshape(1, -1))[0] for x in X_i])
-        U = np.array([model.predict_interval(x.reshape(1, -1))[1] for x in X_i])
+        L, U = np.array([model.predict_interval(x.reshape(1, -1))[0] for x in X_i])
         INT_t.append([L, U])
-
+    models["SPCI last grade"] = models_lg
     print("Models for SPCI last grade done")
+    mark_cols = [c for c in df3.columns if c.endswith("mark")]
+    prefixes = list(dict.fromkeys(c.rsplit("_",1)[0] for c in mark_cols))
+    static_cols = []
+
+    models_comb = train_combined_models(
+        dataframe=df3,
+        X_arr=X_arr, 
+        y_cible=y_cible3,
+        X_train=X_train,
+        models_c_ng=models_c_ng,
+        models_lg=models_lg,
+        threshold=threshold,
+        w2=w2,
+        prefixes=prefixes,   
+        static_cols=static_cols,   
+        n_estimators=500,  
+        random_state=42
+    )
+    models["CP + SPCI last grade combined"] = models_comb
+
 
     print("Model production pipeline completed!")
+    root = Path(__file__).resolve().parent
+    output_dir = root / "models"
+    output_dir.mkdir(parents=True, exist_ok=True)
+
+    # Sauvegarde
+    with open(output_dir / "models.json", "w", encoding="utf-8") as f:
+        json.dump(models, f, indent=4, ensure_ascii=False)
+
+    print("✅ Dictionnaire de modèles enregistré dans root/models/models.json")
 
 
 if __name__ == "__main__":
@@ -260,7 +290,7 @@ if __name__ == "__main__":
         "--w1",
         type=int,
         default=3,
-        help="Window size for first UMAP analysis.",
+        help="Window size for first analysis.",
     )
     parser.add_argument(
         "--w2",

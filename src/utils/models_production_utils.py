@@ -19,7 +19,7 @@ from collections import deque
 from sklearn.ensemble import RandomForestRegressor, GradientBoostingRegressor
 from lightgbm import LGBMRegressor
 from sklearn.base import clone
-
+from model_production_data_processing_utils import build_X_s
 
 
 def run_analysis_w(
@@ -797,3 +797,140 @@ class ConformalSPCIEvaluator:
             res_metrics_all.append(df_metrics)
 
         return pd.concat(res_metrics_all, ignore_index=True)
+
+def train_combined_models(dataframe, X_arr, y_cible, X_train, models_c_ng, models_lg, 
+                          threshold, w2, prefixes=None, static_cols=None, 
+                          n_estimators=300, max_depth=None, class_weight="balanced", 
+                          random_state=42, n_jobs=-1):
+    """
+    Entraîne des modèles combinés de type gate pour la sélection entre MCP et SPCI.
+    
+    Parameters:
+    -----------
+    dataframe : pd.DataFrame
+        DataFrame contenant les données avec colonnes 'clusters' et colonnes de marks
+    X_arr : array-like
+        Array des features pour chaque n
+    y_cible : array-like
+        Labels cibles
+    X_train : array-like
+        Données d'entraînement
+    models_c_ng : dict
+        Dictionnaire des modèles MCP avec clés ('RF', n, 'vanilla')
+    models_lg : dict
+        Dictionnaire des modèles SPCI avec clés n
+    threshold : float
+        Seuil pour la classification
+    w2 : int
+        Index de début pour la boucle
+    prefixes : list, optional
+        Liste des préfixes pour build_X_s. Si None, calculé automatiquement
+    static_cols : list, optional
+        Liste des colonnes statiques pour build_X_s. Par défaut []
+    n_estimators : int, default=300
+        Nombre d'estimateurs pour RandomForest
+    max_depth : int or None, default=None
+        Profondeur maximale pour RandomForest
+    class_weight : str, default="balanced"
+        Pondération des classes
+    random_state : int, default=42
+        Graine aléatoire
+    n_jobs : int, default=-1
+        Nombre de jobs en parallèle
+        
+    Returns:
+    --------
+    list
+        Liste des modèles gate entraînés
+    """
+    from sklearn.ensemble import RandomForestClassifier
+    from sklearn.base import clone
+    import numpy as np
+    from tqdm import tqdm
+    
+    # Initialisation du classificateur de base
+    clf = RandomForestClassifier(
+        n_estimators=n_estimators,
+        max_depth=max_depth,
+        class_weight=class_weight,
+        random_state=random_state,
+        n_jobs=n_jobs,
+    )
+    
+    models_comb = []
+    
+    # Calcul automatique des prefixes si non fourni
+    if prefixes is None:
+        mark_cols = [c for c in dataframe.columns if c.endswith("mark")]
+        prefixes = list(dict.fromkeys(c.rsplit("_", 1)[0] for c in mark_cols))
+    
+    # Initialisation des colonnes statiques si non fournies
+    if static_cols is None:
+        static_cols = []
+    
+    for n in tqdm(range(w2, len(X_arr))): 
+        gate_clf = clone(clf)
+        X_SPCI = X_arr[n]  # Correction: utiliser n au lieu de i
+        X_CP = build_X_s(dataframe, prefixes, static_cols, n)
+
+        model1 = models_c_ng[('RF', n, 'vanilla')]  # ou "mondrian"
+        model2 = models_lg[n]
+
+        # Prédictions MCP
+        y_pred_mcp_gate, yps_mcp_gate = model1.predict(
+            X_CP, alpha=0.05, partition=dataframe['clusters']
+        )
+        pset_cal_cls = yps_mcp_gate[:, :, 0].astype(bool)
+
+        # Prédictions SPCI
+        intervals = model2.predict_interval(X_SPCI)
+        L_cal = np.array([iv[0] for iv in intervals]).reshape(-1)
+        U_cal = np.array([iv[1] for iv in intervals]).reshape(-1)
+        pset_cal_spc = np.zeros_like(pset_cal_cls, dtype=bool)
+        mask_cls1 = threshold > U_cal
+        mask_cls0 = threshold < L_cal
+        pset_cal_spc[mask_cls1, 1] = True
+        pset_cal_spc[mask_cls0, 0] = True
+        amb = ~(mask_cls1 | mask_cls0)
+        pset_cal_spc[amb, :] = True
+        
+        # Construction des features et labels pour le gate
+        df_sel_arr = []
+        labels_g = []
+
+        for i in range(len(X_train)):
+            feat_vec = X_CP[i]
+            w_cls = int(pset_cal_cls[i].sum())
+            w_spc = int(pset_cal_spc[i].sum())
+            diff = w_cls - w_spc
+
+            # Calcul des erreurs (pour les labels uniquement)
+            y_true = int(y_cible[i])
+            err_cls = int(y_true not in np.where(pset_cal_cls[i])[0])
+            err_spc = int(y_true not in np.where(pset_cal_spc[i])[0])
+
+            # Logique de décision pour le gate
+            if err_cls == 0 and err_spc == 1:
+                gate_y = 0            # MCP
+            elif err_spc == 0 and err_cls == 1:
+                gate_y = 1            # SPCI
+            elif err_cls == 0 and err_spc == 0:
+                # tie-break: préfère le plus étroit; en cas d'égalité → SPCI
+                gate_y = 0 if (w_cls < w_spc) else 1
+            else:
+                gate_y = 2            # union
+
+            labels_g.append(gate_y)
+
+            # Construction du vecteur de features (sans inclure les erreurs)
+            meta_vec = np.concatenate([feat_vec, [w_cls, w_spc, diff]])
+            df_sel_arr.append(meta_vec)
+
+        # Entraînement du modèle gate
+        X_gate_train = np.vstack(df_sel_arr)
+        labels_g = np.asarray(labels_g)
+
+        gate_clf.fit(X_gate_train, labels_g)
+        models_comb.append(gate_clf)
+    
+    return models_comb
