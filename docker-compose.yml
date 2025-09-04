@@ -1,8 +1,6 @@
-version: '3.8'
-
 services:
   data-loading:
-    build: ./Dockerfile
+    build: .
     container_name: data_loading_service
     volumes:
       - ./data:/app/data
@@ -13,7 +11,7 @@ services:
       - pedagogia-network
 
   model-production:
-    build: ./Dockerfile
+    build: .
     container_name: model_production_service
     volumes:
       - ./data:/app/data
