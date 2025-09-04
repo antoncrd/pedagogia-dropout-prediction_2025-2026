@@ -19,7 +19,7 @@ from collections import deque
 from sklearn.ensemble import RandomForestRegressor, GradientBoostingRegressor
 from lightgbm import LGBMRegressor
 from sklearn.base import clone
-from model_production_data_processing_utils import build_X_s
+from utils.model_production_data_processing_utils import build_X_s
 
 
 def run_analysis_w(

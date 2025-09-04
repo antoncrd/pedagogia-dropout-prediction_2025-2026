@@ -33,7 +33,8 @@ from utils.models_production_utils import (
 
 from utils.model_production_data_processing_utils import(
     cluster_with_min_size,
-    build_umap_windows_by_suffix
+    build_umap_windows_by_suffix,
+    compute_threshold_kmeans
 )
 
 # Default constants
@@ -41,8 +42,6 @@ DEFAULT_YEAR = 24
 DEFAULT_N_CLUSTERS = 4
 DEFAULT_MIN_CLUSTER_SIZE = 50
 DEFAULT_DATA_FILE = "data/DATA.csv"
-DEFAULT_THRESHOLD = 0.5  # Assuming a default threshold; adjust as needed 
-
 
 def load_and_preprocess_data(data_file: str, year: int) -> pd.DataFrame:
     """
@@ -106,7 +105,6 @@ def main(
     n_clusters: int,
     min_cluster_size: int,
     data_file: str,
-    threshold: float,
     w1: int = 3,
     w2: int = 10,
     alpha1: float = 0.1,
@@ -120,7 +118,6 @@ def main(
         n_clusters (int): Number of clusters.
         min_cluster_size (int): Minimum cluster size.
         data_file (str): Path to data file.
-        threshold (float): Threshold for analysis.
         w1 (int): Window size for first analysis.
         w2 (int): Window size for second analysis.
         alpha1 (float): Alpha for first SPCI model.
@@ -129,6 +126,7 @@ def main(
     # Load and preprocess data
     df1 = load_and_preprocess_data(data_file, year)
 
+    threshold = compute_threshold_kmeans(df1)
     # Prepare features
     X = prepare_features(df1, year)
 
@@ -281,12 +279,6 @@ if __name__ == "__main__":
         help="Path to the input data CSV file.",
     )
     parser.add_argument(
-        "--threshold",
-        type=float,
-        default=DEFAULT_THRESHOLD,
-        help="Threshold for analysis.",
-    )
-    parser.add_argument(
         "--w1",
         type=int,
         default=3,
@@ -320,7 +312,6 @@ if __name__ == "__main__":
             n_clusters=args.n_clusters,
             min_cluster_size=args.min_cluster_size,
             data_file=args.data_file,
-            threshold=args.threshold,
             w1=args.w1,
             w2=args.w2,
             alpha1=args.alpha1,

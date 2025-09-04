@@ -148,13 +148,12 @@ def build_umap_windows_by_suffix(
 
     # 1) Extraction des suffixes (après le premier '_') en conservant l'ordre d'apparition
     col_series = pd.Series(cols_with_us)
-    suffixes = col_series.apply(lambda x: x.split("_", 1)[1])
-    ordered_suffixes = suffixes.drop_duplicates().tolist()
-
+    suffixes = col_series.apply(lambda x: x.split("_")[1])
+    ordered_suffixes = suffixes.unique()
     # 2) Groupement des colonnes par suffixe
     dfs: Dict[str, pd.DataFrame] = {}
     for suffix in ordered_suffixes:
-        cols_for_suffix = [c for c in cols_with_us if c.split("_", 1)[1] == suffix]
+        cols_for_suffix = [c for c in cols_with_us if c.split("_")[1] == suffix]
         subdf = df1[cols_for_suffix].copy()
         dfs[suffix] = subdf
         if verbose:
@@ -262,3 +261,107 @@ def pred_sets_to_bool(pred_sets, n_classes):
         else:
             out[i, [int(l) for l in labels]] = True
     return out
+
+
+def compute_threshold_kmeans(
+    df: pd.DataFrame,
+    *,
+    n_rendus: int = 1,
+    min_prop: float = 0.5,
+    max_prop: float = 1.0,
+    n_grid: int = 100,
+    min_dropout_pct: float = 20.0,
+    random_state: int = 0
+) -> float:
+    """
+    Calcule un seuil (threshold) à partir des dernières notes non nulles via un KMeans (k=2),
+    puis balaye une grille de proportions pour maximiser la variation de la proportion binaire
+    entre deux pas successifs.
+
+    Paramètres
+    ----------
+    df : DataFrame
+        Doit contenir des colonnes se terminant par 'mark'.
+    n_rendus : int
+        Nombre de notes non nulles les plus récentes à considérer (on prend la plus récente parmi elles).
+    min_prop, max_prop : float
+        Plage des coefficients appliqués au plus petit centre KMeans (min(centers)).
+    n_grid : int
+        Taille de la grille linéaire entre min_prop et max_prop.
+    min_dropout_pct : float
+        Si la proportion de Y_TARGET (dropout) < ce pourcentage, on recule d’un cran (prop courante).
+    random_state : int
+        Graine pour KMeans.
+
+    Retour
+    ------
+    float
+        Le threshold choisi.
+    """
+
+    # 1) Préparation des données
+    df0 = df.copy().fillna(0)
+    mark_cols = [c for c in df0.columns if c.endswith("mark")]
+    if not mark_cols:
+        raise ValueError("Aucune colonne se terminant par 'mark' trouvée.")
+
+    # On inverse pour parcourir des colonnes de la plus récente à la plus ancienne (si votre ordre est encodé dans les noms)
+    mark_cols = mark_cols[::-1]
+
+    # 2) Récupérer pour chaque ligne la/les dernière(s) notes non nulles
+    def last_marks(row):
+        vals = []
+        for c in mark_cols:
+            v = row[c]
+            if v > 0:
+                vals.append(v)
+                if len(vals) == n_rendus:
+                    break
+        return pd.Series({"last_vals": vals})
+
+    tmp = df0.apply(last_marks, axis=1)
+    df0["last_vals"] = tmp["last_vals"]
+    # on prend la plus récente parmi les n_rendus collectés (index 0), sinon 0 si aucun
+    df0["lastvals"] = df0["last_vals"].apply(lambda vs: vs[0] if len(vs) > 0 else 0.0).astype(float)
+
+    x = df0["lastvals"].to_numpy(dtype=float)
+
+    # 3) KMeans en 2 clusters
+    X = x.reshape(-1, 1)
+    kmeans = KMeans(n_clusters=2, random_state=random_state).fit(X)
+    centers = kmeans.cluster_centers_.flatten()
+    low_center = float(np.min(centers))
+
+    # 4) Balayage de la grille et sélection du meilleur "saut" de proportion
+    props = np.linspace(min_prop, max_prop, n_grid)
+    best_ec = -np.inf
+    best_prop_prev = None
+    best_prop_curr = None
+
+    prev_mean = None
+    for i, prop in enumerate(props):
+        threshold_tmp = low_center * prop
+        y_all = (x < threshold_tmp).astype(int)
+        current_mean = float(y_all.mean())
+
+        if i > 0:  # on peut mesurer l'écart avec l'itération précédente
+            ec = abs(current_mean - prev_mean)
+            if ec > best_ec:
+                best_ec = ec
+                best_prop_curr = prop           # prop à l'instant i
+                best_prop_prev = props[i - 1]   # prop à l’instant i-1
+        prev_mean = current_mean
+
+    # Sécurités si la grille a une seule valeur ou si rien n'a été mis à jour
+    if best_prop_prev is None or best_prop_curr is None:
+        # fallback : prendre la première prop
+        best_prop_prev = props[0]
+        best_prop_curr = props[min(1, len(props) - 1)]
+
+    # 5) Choix final du threshold + contrainte min_dropout_pct
+    threshold = low_center * best_prop_prev
+    y_target = (x < threshold).astype(int)
+    if (y_target.mean() * 100.0) < min_dropout_pct:
+        threshold = low_center * best_prop_curr
+
+    return float(threshold)
