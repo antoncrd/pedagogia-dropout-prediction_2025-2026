@@ -1,37 +1,38 @@
 services:
   data-loading:
-    build: .
+    build:
+      context: .
     container_name: data_loading_service
+    environment:
+      - PYTHONUNBUFFERED=1
+      - PYTHONPATH=/app/src
+    working_dir: /app
     volumes:
-      - ./data:/app/data
-      - ./utils:/app/utils
-      - ./src:/app/src
-    command: python -u -m src.data_loading_julien --year 2024 --data_dir data --utils_dir utils
-    networks:
-      - pedagogia-network
+      - ./src:/app/src:rw
+      - ./data:/app/data:rw
+      - ./models:/app/models:rw
+    command: >
+      python -u -m src.data_loading
+      --year 2024
+      --units B-CPE-100 B-CPE-110
+      --data_dir /app/data
+      --utils_dir /app/src/utils
+    restart: "no"
 
   model-production:
-    build: .
+    build:
+      context: .
     container_name: model_production_service
+    environment:
+      - PYTHONUNBUFFERED=1
+      - PYTHONPATH=/app/src
+    working_dir: /app
     volumes:
-      - ./data:/app/data
-      - ./utils:/app/utils
-      - ./src:/app/src
-      - ./models:/app/models
-    command: python -u -m src.model_production_main_julien --year 24 --data_file data/DATA.csv
-    depends_on:
-      - data-loading
-    networks:
-      - pedagogia-network
-
-volumes:
-  data:
-    driver: local
-  models:
-    driver: local
-  src:
-    driver: local
-
-networks:
-  pedagogia-network:
-    driver: bridge
+      - ./src:/app/src:rw
+      - ./data:/app/data:rw
+      - ./models:/app/models:rw
+    command: >
+      python -u -m src.model_production_main
+      --year 24
+      --data_file /app/data/DATA.csv
+    restart: "no"
