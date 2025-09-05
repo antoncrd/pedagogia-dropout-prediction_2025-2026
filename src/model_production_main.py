@@ -163,7 +163,7 @@ def main(
         if not isinstance(N, (int, np.integer)) or N <= 0:
             raise ValueError(f"N doit être un entier > 0, reçu {N!r}")
         max_n = min(len(X_arr), int(N - w1))
-    for i in tqdm(range(1, max_n), desc="Processing windows"):
+    for i in tqdm(range(1, max_n), desc="Horizon d'entraînement SPCI next grade"):
         X_train = np.vstack(X_arr[:i])
         y_train = np.concatenate(y_arr[:i])
         model = OneSidedSPCI_LGBM_Offline(alpha=alpha1, w=300, random_state=42)
@@ -216,7 +216,7 @@ def main(
             raise ValueError(f"N doit être un entier > 0, reçu {N!r}")
         max_n = min(len(X_arr), int(N - w2))
 
-    for i in tqdm(range(1, max_n), desc="Processing windows for last grade"):
+    for i in tqdm(range(1, max_n), desc="Horizon d'entraînement SPCI last grade"):
         H = len(keys) - i - w2
         y = []
         for j in range(w2, len(keys)):
