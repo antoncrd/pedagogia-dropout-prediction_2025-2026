@@ -16,7 +16,7 @@ def cluster_with_min_size(
     n_clusters: int,
     min_cluster_size: int = 50,
     random_state: int = 42,
-    cluster_col: str = "cluster",
+    cluster_col: str = "clusters",
     verbose: bool = True,
 ) -> Tuple[pd.DataFrame, Dict[str, Any]]:
     """
