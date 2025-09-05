@@ -156,7 +156,8 @@ def main(
         model = OneSidedSPCI_LGBM_Offline(alpha=alpha1, w=300, random_state=42)
         model.fit(X_train, y_train)
         X_i = X_arr[i]
-        U = np.array([model.predict_interval(x.reshape(1, -1))[1] for x in X_i])
+        intervals = np.array([model.predict_interval(x.reshape(1, -1))[1] for x in X_i])
+        _, U = intervals[:, 0], intervals[:, 1]
         U_t.append(U)
 
     # Insert next grade predictions
@@ -211,7 +212,8 @@ def main(
         models_lg.append(model)
 
         X_i = X_arr[i]
-        L, U = np.array([model.predict_interval(x.reshape(1, -1))[0] for x in X_i])
+        intervals = np.array([model.predict_interval(x.reshape(1, -1))[0] for x in X_i])
+        L, U = intervals[:, 0], intervals[:, 1]
         INT_t.append([L, U])
     models["SPCI last grade"] = models_lg
     print("Models for SPCI last grade done")

@@ -35,7 +35,7 @@ ORDERED_FILES = [
     "B-PSU-200_minishell2.csv",
     "B-CPE-200_amazed.csv",
     "B-PSU-200_42sh.csv",
-    "B-CPE-200_corewar.csv"
+    # "B-CPE-200_corewar.csv"
 ]
 
 def main():
