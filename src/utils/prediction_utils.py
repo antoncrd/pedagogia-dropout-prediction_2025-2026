@@ -1,4 +1,9 @@
 import numpy as np
+import pandas as pd
+from mapie.metrics import (
+    classification_coverage_score,
+    classification_mean_width_score,
+)
 
 # --- helpers identiques à l'entraînement ---
 def pset_from_spci(intervals, threshold: float) -> np.ndarray:
@@ -84,3 +89,71 @@ def predict_with_gate(
             "decisions": decisions,  # 0/1/2
         }
     return final
+
+def metrics_for_pset_mapie(pset: np.ndarray, y_true: np.ndarray) -> dict:
+    """
+    Utilise MAPIE pour la couverture & largeur moyenne.
+    Ajoute des stats utiles : taux d’ambiguïté, taux singleton, précision conditionnelle si singleton.
+    """
+    y_true = np.asarray(y_true).astype(int).reshape(-1)
+    if pset.ndim != 2 or pset.shape[1] != 2:
+        raise ValueError("pset doit être (n, 2) bool")
+    if len(y_true) != pset.shape[0]:
+        raise ValueError("y_true doit avoir la même longueur que pset.")
+
+    coverage = classification_coverage_score(y_true, pset)
+    mean_width = classification_mean_width_score(pset)
+
+    width = pset.sum(axis=1)  # 1 ou 2
+    amb_rate = (width == 2).mean()
+    single_rate = (width == 1).mean()
+
+    cond_acc = np.nan
+    mask_single = (width == 1)
+    if mask_single.any():
+        point_pred = pset[mask_single].argmax(axis=1)
+        cond_acc = (point_pred == y_true[mask_single]).mean()
+
+    return {
+        "n": int(pset.shape[0]),
+        "coverage": float(coverage),
+        "mean_width": float(mean_width),
+        "ambiguous_rate": float(amb_rate),
+        "singleton_rate": float(single_rate),
+        "cond_acc_if_singleton": float(cond_acc) if not np.isnan(cond_acc) else np.nan,
+    }
+
+def summarize_three_mapie(pset_mcp: np.ndarray, pset_spci: np.ndarray, pset_gate: np.ndarray, y_true: np.ndarray) -> pd.DataFrame:
+    """
+    Compare MCP / SPCI / GATE avec métriques MAPIE (+ extras).
+    """
+    rows = []
+    rows.append(("MCP",  metrics_for_pset_mapie(pset_mcp,  y_true)))
+    rows.append(("SPCI", metrics_for_pset_mapie(pset_spci, y_true)))
+    rows.append(("GATE", metrics_for_pset_mapie(pset_gate, y_true)))
+    df = pd.DataFrame({name: m for name, m in rows}).T
+    return df[["n", "coverage", "mean_width", "ambiguous_rate", "singleton_rate", "cond_acc_if_singleton"]]
+
+def print_sample_predictions(y_true, pset_mcp, pset_spci, pset_gate, decisions=None, k=10):
+    """
+    Affiche un petit échantillon lisible (k lignes).
+    """
+    n = len(y_true)
+    idx = np.arange(min(k, n))
+    def fmt_set(ps):
+        if ps[0] and ps[1]: return "{0,1}"
+        if ps[0]:           return "{0}"
+        if ps[1]:           return "{1}"
+        return "∅"
+    print("\n--- Échantillon de prédictions ---")
+    header = ["i", "y", "MCP", "SPCI", "GATE"]
+    if decisions is not None:
+        header += ["gate_dec"]
+    print("\t".join(header))
+    for i in idx:
+        row = [str(i), str(int(y_true[i])), fmt_set(pset_mcp[i]), fmt_set(pset_spci[i]), fmt_set(pset_gate[i])]
+        if decisions is not None:
+            # 0=MCP, 1=SPCI, 2=UNION
+            dec = int(decisions[i])
+            row.append({0:"MCP", 1:"SPCI", 2:"UNION"}.get(dec, str(dec)))
+        print("\t".join(row))
