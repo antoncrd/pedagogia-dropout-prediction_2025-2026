@@ -878,14 +878,8 @@ def train_combined_models(dataframe, X_arr, y_cible, X_train, models_c_ng, model
     if static_cols is None:
         static_cols = []
     
-    if N is None:
-        max_n = len(X_arr)
-    else:
-        if not isinstance(N, (int, np.integer)) or N <= 0:
-            raise ValueError(f"N doit être un entier > 0, reçu {N!r}")
-        max_n = min(len(X_arr), int(N - w2))
     for base_model in ['RF', 'GB']:
-        for n in tqdm(range(w2, max_n)):
+        for n in tqdm(range(w2 + 1, N)):
             gate_clf = clone(clf)
             X_SPCI = X_arr[n]  # Correction: utiliser n au lieu de i
             X_CP = build_X_s(dataframe, prefixes, static_cols, n)
