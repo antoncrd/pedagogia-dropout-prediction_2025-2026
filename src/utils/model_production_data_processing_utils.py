@@ -5,8 +5,42 @@ import pandas as pd
 from sklearn.cluster import KMeans
 from sklearn.preprocessing import StandardScaler
 from typing import Dict, Tuple, List, Any
+
+import warnings
+warnings.filterwarnings(
+    "ignore",
+    message=r".*hamming distance metric.*inverse_transform will be unavailable.*",
+    category=UserWarning,
+    module=r"umap\.umap_",
+)
+warnings.filterwarnings(
+    "ignore",
+    message=r".*n_jobs value .* overridden to 1 by setting random_state.*",
+    category=UserWarning,
+    module=r"umap\.umap_",
+)
+
 import umap
 from sklearn.preprocessing import MinMaxScaler
+
+from pathlib import Path
+from joblib import dump, load
+import pickle
+
+def save_models_bundle(trained_clfs: dict, out_path: str | Path = "/app/models/trained_clfs.joblib", *, compress: int = 3) -> Path:
+    """
+    Sauve le dict de modèles tel quel dans un unique .joblib.
+    Les clés tuple sont gardées (pickle sait gérer).
+    """
+    out_path = Path(out_path)
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+    dump(trained_clfs, out_path, compress=compress, protocol=pickle.HIGHEST_PROTOCOL)
+    print(f"[save] {len(trained_clfs)} modèles sauvegardés → {out_path}")
+    return out_path
+
+def load_models_bundle(path: str | Path = "/app/models/trained_clfs.joblib") -> dict:
+    """Recharge le dict de modèles (⚠️ charge seulement des fichiers de confiance)."""
+    return load(Path(path))
 
 
 def cluster_with_min_size(

@@ -34,6 +34,7 @@ def run_analysis_w(
     nan_fill: float = 0,
     do_plot: bool = False,
     globe: bool = True,
+    N: Optional[int] = None
 ) -> Tuple[pd.DataFrame, pd.DataFrame, pd.Series, Dict[tuple[str, int, str], MapieClassifier]]:
 
     # 0) Chargement et préparation
@@ -82,8 +83,8 @@ def run_analysis_w(
         y_all = pd.Series(y).reset_index(drop=True).astype(int)
     y_all_arr = y_all.values
     # Features & clusters
-    has_cluster = "cluster" in df0.columns
-    clusters_all = df0.get("cluster", pd.Series(0, index=df0.index)).astype(int).values
+    has_cluster = "clusters" in df0.columns
+    clusters_all = df0.get("clusters", pd.Series(0, index=df0.index)).astype(int).values
     prefixes = list(dict.fromkeys(c.rsplit("_",1)[0] for c in mark_cols[::-1]))
     static_cols = []
     def build_X(df_sub: pd.DataFrame, prefixes: list, static_cols: list, n: int) -> np.ndarray:
@@ -104,8 +105,15 @@ def run_analysis_w(
     records: list[dict] = []
     trained_clfs: Dict[tuple[str,int,str], Union[MapieClassifier, MondrianCP]] = {}
 
+    if N is None:
+        max_n = len(prefixes)
+    else:
+        if not isinstance(N, (int, np.integer)) or N <= 0:
+            raise ValueError(f"N doit être un entier > 0, reçu {N!r}")
+        max_n = min(len(prefixes), int(N))
+
     for name, base_clf in MODELS.items():
-        for n in tqdm(range(1, len(prefixes) + 1), desc=name):
+        for n in tqdm(range(1, max_n + 1), desc=name):
             clf = clone(base_clf)
             idx_all = df0.index.values
             idx_tmp, idx_test, y_tmp, y_test, cl_tmp, cl_test = train_test_split(
@@ -128,8 +136,8 @@ def run_analysis_w(
             mapie_global  = MapieClassifier(estimator=calib, method="lac", cv="prefit").fit(X_cal, y_cal)
             base_mapie    = MapieClassifier(estimator=calib, method="lac", cv="prefit")
             # Mondrian CP
-            ser = pd.Series(y_cal, index=pd.Index(cl_cal, name="cluster"))
-            valid_clusters = ser.groupby("cluster").nunique().loc[lambda s: s>=2].index.values
+            ser = pd.Series(y_cal, index=pd.Index(cl_cal, name="clusters"))
+            valid_clusters = ser.groupby("clusters").nunique().loc[lambda s: s>=2].index.values
             # print('valid clusters : ', valid_clusters)
             mask_cal_valid = np.isin(cl_cal, valid_clusters)
             mond_mapie = MondrianCP(mapie_estimator=base_mapie)
@@ -316,7 +324,7 @@ class OneSidedSPCI_LGBM_Offline:
         """Apprend f̂ et Q̂(1-α) une seule fois."""
         # 1) f̂
         self.base_rf.fit(X_train, y_train)
-        print("fit 1 ok")
+        # print("fit 1 ok")
         # 2) résidus tronqués à 0 -> tampon
         r = np.maximum(0.0, y_train - self.base_rf.predict(X_train))
         self.res_buf.extend(r)
@@ -330,7 +338,7 @@ class OneSidedSPCI_LGBM_Offline:
         X = np.array([R[i - self.w:i] for i in range(self.w, len(R))])
 
         self.gbr.fit(X, Y)
-        print("fit 2 ok")
+        # print("fit 2 ok")
         self.is_ready = True
         return self
 
@@ -543,7 +551,7 @@ class ConformalSPCIEvaluator:
         random_state: int = 42,
         nan_fill: float | int = 0,
         source_col: str = "source",
-        cluster_col: str = "cluster",
+        cluster_col: str = "clusters",
         static_cols: Optional[List[str]] = None,
         models_dict: Optional[Dict[str, Any]] = None,
         gate_factory: Optional[Callable[[], Any]] = None,
@@ -801,7 +809,7 @@ class ConformalSPCIEvaluator:
 def train_combined_models(dataframe, X_arr, y_cible, X_train, models_c_ng, models_lg, 
                           threshold, w2, prefixes=None, static_cols=None, 
                           n_estimators=300, max_depth=None, class_weight="balanced", 
-                          random_state=42, n_jobs=-1):
+                          random_state=42, n_jobs=-1, N = None):
     """
     Entraîne des modèles combinés de type gate pour la sélection entre MCP et SPCI.
     
@@ -837,6 +845,8 @@ def train_combined_models(dataframe, X_arr, y_cible, X_train, models_c_ng, model
         Graine aléatoire
     n_jobs : int, default=-1
         Nombre de jobs en parallèle
+    N : int or None, default=None
+        Horizon maximal d'entraînement
         
     Returns:
     --------
@@ -868,7 +878,14 @@ def train_combined_models(dataframe, X_arr, y_cible, X_train, models_c_ng, model
     if static_cols is None:
         static_cols = []
     
-    for n in tqdm(range(w2, len(X_arr))): 
+    if N is None:
+        max_n = len(X_arr)
+    else:
+        if not isinstance(N, (int, np.integer)) or N <= 0:
+            raise ValueError(f"N doit être un entier > 0, reçu {N!r}")
+        max_n = min(len(X_arr), int(N - w2))
+        
+    for n in tqdm(range(w2, max_n)):
         gate_clf = clone(clf)
         X_SPCI = X_arr[n]  # Correction: utiliser n au lieu de i
         X_CP = build_X_s(dataframe, prefixes, static_cols, n)

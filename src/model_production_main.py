@@ -16,7 +16,7 @@ import argparse
 import re
 import numpy as np
 import pandas as pd
-import json
+from typing import Optional
 from pathlib import Path
 
 from tqdm import tqdm
@@ -32,6 +32,7 @@ from utils.models_production_utils import (
 )
 
 from utils.model_production_data_processing_utils import(
+    save_models_bundle,
     cluster_with_min_size,
     build_umap_windows_by_suffix,
     compute_threshold_kmeans
@@ -63,7 +64,6 @@ def load_and_preprocess_data(data_file: str, year: int) -> pd.DataFrame:
 
     # Handle NaN values based on year
     nb_nan_par_ligne = df.isna().sum(axis=1)
-    print("Maximum number of NaN in a row:", max(nb_nan_par_ligne))
     if year == 24:
         df = df[nb_nan_par_ligne < 495]
     elif year == 23:
@@ -109,6 +109,7 @@ def main(
     w2: int = 10,
     alpha1: float = 0.1,
     alpha2: float = 0.1,
+    N: Optional[int] = None
 ) -> None:
     """
     Main function to run the model production pipeline.
@@ -122,6 +123,7 @@ def main(
         w2 (int): Window size for second analysis.
         alpha1 (float): Alpha for first SPCI model.
         alpha2 (float): Alpha for second SPCI model.
+        N (int) : Horizon maximal d'entraînement.
     """
     # Load and preprocess data
     df1 = load_and_preprocess_data(data_file, year)
@@ -134,15 +136,19 @@ def main(
     df2, info = cluster_with_min_size(
         df1, X, n_clusters=n_clusters, min_cluster_size=min_cluster_size, random_state=42
     )
-    print("Reassignment of small clusters done")
+    print("Réassignement des petits clusters done")
 
     # Run analysis with clustering
     df_detail, df_agg, y_cible2, models_c = run_analysis_w(
-        df=df2, threshold=threshold, do_plot=False
+        df=df2, threshold=threshold, do_plot=False, N=N
     )
     models = {}
     models["+ clustering"] = models_c
-    print("Models with plain + clustering done")
+    print("Modèles avec clustering entraînés")
+
+    save_models_bundle(models_c, f"/app/models/models_clustering_{year}.joblib", compress=3)
+
+    print("Premier dictionnaire de modèles enregistré dans root/models/models_clustering.joblib")
 
     # Build UMAP windows and SPCI next grade
     Xt, keys, X_arr, y_arr = build_umap_windows_by_suffix(
@@ -150,14 +156,20 @@ def main(
     )
 
     U_t = []
-    for i in tqdm(range(1, len(X_arr) - 1), desc="Processing windows"):
+    if N is None:
+        max_n = len(X_arr)
+    else:
+        if not isinstance(N, (int, np.integer)) or N <= 0:
+            raise ValueError(f"N doit être un entier > 0, reçu {N!r}")
+        max_n = min(len(X_arr), int(N - w1))
+    for i in tqdm(range(1, max_n), desc="Processing windows for SPCI next grade"):
         X_train = np.vstack(X_arr[:i])
         y_train = np.concatenate(y_arr[:i])
         model = OneSidedSPCI_LGBM_Offline(alpha=alpha1, w=300, random_state=42)
         model.fit(X_train, y_train)
+        print(f"SPCI next grade entraîné pour le temps {i + w1}")
         X_i = X_arr[i]
-        intervals = np.array([model.predict_interval(x.reshape(1, -1))[1] for x in X_i])
-        _, U = intervals[:, 0], intervals[:, 1]
+        U = np.array([model.predict_interval(x.reshape(1, -1))[1] for x in X_i])
         U_t.append(U)
 
     # Insert next grade predictions
@@ -187,14 +199,24 @@ def main(
         df=df3, threshold=threshold, do_plot=False
     )
     models["+ clustering + SPCI next grade"] = models_c_ng
-    print("Models with plain + clustering + SPCI next grade done")
+
+    print("Modèles avec clustering et SPCI next grade entraînés")
+
+    save_models_bundle(models_c_ng, f"/app/models/models_clustering_SPCI_ng_{year}.joblib", compress=3)
+
+    print("Second dictionnaire de modèles enregistré dans root/models/models_clustering_SPCI_ng.joblib")
 
     # SPCI last grade analysis
     models_lg = []
     INT_t = []
-    k = len(X_arr)
+    if N is None:
+        max_n = len(X_arr)
+    else:
+        if not isinstance(N, (int, np.integer)) or N <= 0:
+            raise ValueError(f"N doit être un entier > 0, reçu {N!r}")
+        max_n = min(len(X_arr), int(N - w2))
 
-    for i in tqdm(range(1, k), desc="Processing windows for last grade"):
+    for i in tqdm(range(1, max_n), desc="Processing windows for SPCI last grade"):
         H = len(keys) - i - w2
         y = []
         for j in range(w2, len(keys)):
@@ -209,14 +231,21 @@ def main(
         y_train = np.concatenate(y_arr2[:i])
         model = TwoSidedSPCI_RFQuant_Offline(alpha=alpha2, w=300, random_state=42)
         model.fit(X_train, y_train)
+        print(f"SPCI last grade entraîné pour le temps {i + w2}")
         models_lg.append(model)
 
         X_i = X_arr[i]
-        intervals = np.array([model.predict_interval(x.reshape(1, -1))[0] for x in X_i])
-        L, U = intervals[:, 0], intervals[:, 1]
-        INT_t.append([L, U])
+        intervals = np.array([model.predict_interval(x) for x in X_i], dtype=float)
+        # L, U = intervals[:, 0], intervals[:, 1]
+        INT_t.append(intervals)
     models["SPCI last grade"] = models_lg
-    print("Models for SPCI last grade done")
+
+    print("Modèles SPCI last grade entraînés")
+
+    save_models_bundle(models_lg, f"/app/models/models_SPCI_lg_{year}.joblib", compress=3)
+
+    print("Troisième dictionnaire de modèles enregistré dans root/models/models_SPCI_lg.joblib")
+
     mark_cols = [c for c in df3.columns if c.endswith("mark")]
     prefixes = list(dict.fromkeys(c.rsplit("_",1)[0] for c in mark_cols))
     static_cols = []
@@ -236,18 +265,15 @@ def main(
         random_state=42
     )
     models["CP + SPCI last grade combined"] = models_comb
+    save_models_bundle(models_comb, f"/app/models/models_comb_{year}.joblib", compress=3)
 
+    print("Dernier dictionnaire de modèles enregistré dans root/models/models_comb.joblib")
 
     print("Model production pipeline completed!")
-    root = Path(__file__).resolve().parent
-    output_dir = root / "models"
-    output_dir.mkdir(parents=True, exist_ok=True)
 
-    # Sauvegarde
-    with open(output_dir / "models.json", "w", encoding="utf-8") as f:
-        json.dump(models, f, indent=4, ensure_ascii=False)
+    save_models_bundle(models, f"/app/models/all_models_{year}.joblib", compress=3)
 
-    print("✅ Dictionnaire de modèles enregistré dans root/models/models.json")
+    print("✅ Dictionnaire de tous les modèles enregistré dans root/models/all_models.joblib")
 
 
 if __name__ == "__main__":
@@ -304,7 +330,12 @@ if __name__ == "__main__":
         default=0.1,
         help="Alpha parameter for second SPCI model.",
     )
-
+    parser.add_argument(
+        "--N",
+        type=int,
+        default=None,
+        help="Horizon max d’entraînement.",
+    )
     # Parse arguments
     args = parser.parse_args()
 
@@ -318,6 +349,7 @@ if __name__ == "__main__":
             w2=args.w2,
             alpha1=args.alpha1,
             alpha2=args.alpha2,
+            N = args.N
         )
     except Exception as e:
         print(f"[ERROR] An error occurred: {e}")
