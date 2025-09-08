@@ -232,7 +232,7 @@ def main(
         model = TwoSidedSPCI_RFQuant_Offline(alpha=alpha2, w=300, random_state=42)
         model.fit(X_train, y_train)
         print(f"SPCI last grade entraîné pour le temps {i + w2}")
-        models_lg[i] = model
+        models_lg[i + w2] = model
 
         X_i = X_arr[i]
         intervals = np.array([model.predict_interval(x) for x in X_i], dtype=float)
