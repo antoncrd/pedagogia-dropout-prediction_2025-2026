@@ -867,7 +867,7 @@ def train_combined_models(dataframe, X_arr, y_cible, X_train, models_c_ng, model
         n_jobs=n_jobs,
     )
     
-    models_comb = []
+    models_comb = {}
     
     # Calcul automatique des prefixes si non fourni
     if prefixes is None:
@@ -884,70 +884,70 @@ def train_combined_models(dataframe, X_arr, y_cible, X_train, models_c_ng, model
         if not isinstance(N, (int, np.integer)) or N <= 0:
             raise ValueError(f"N doit être un entier > 0, reçu {N!r}")
         max_n = min(len(X_arr), int(N - w2))
-        
-    for n in tqdm(range(w2, max_n)):
-        gate_clf = clone(clf)
-        X_SPCI = X_arr[n]  # Correction: utiliser n au lieu de i
-        X_CP = build_X_s(dataframe, prefixes, static_cols, n)
+    for base_model in ['RF', 'GB']:
+        for n in tqdm(range(w2, max_n)):
+            gate_clf = clone(clf)
+            X_SPCI = X_arr[n]  # Correction: utiliser n au lieu de i
+            X_CP = build_X_s(dataframe, prefixes, static_cols, n)
 
-        model1 = models_c_ng[('RF', n, 'vanilla')]  # ou "mondrian"
-        model2 = models_lg[n]
+            model1 = models_c_ng[(base_model, n, 'vanilla')]  # ou "mondrian"
+            model2 = models_lg[n]
 
-        # Prédictions MCP
-        y_pred_mcp_gate, yps_mcp_gate = model1.predict(
-            X_CP, alpha=0.05, partition=dataframe['clusters']
-        )
-        pset_cal_cls = yps_mcp_gate[:, :, 0].astype(bool)
+            # Prédictions MCP
+            y_pred_mcp_gate, yps_mcp_gate = model1.predict(
+                X_CP, alpha=0.05, partition=dataframe['clusters']
+            )
+            pset_cal_cls = yps_mcp_gate[:, :, 0].astype(bool)
 
-        # Prédictions SPCI
-        intervals = model2.predict_interval(X_SPCI)
-        L_cal = np.array([iv[0] for iv in intervals]).reshape(-1)
-        U_cal = np.array([iv[1] for iv in intervals]).reshape(-1)
-        pset_cal_spc = np.zeros_like(pset_cal_cls, dtype=bool)
-        mask_cls1 = threshold > U_cal
-        mask_cls0 = threshold < L_cal
-        pset_cal_spc[mask_cls1, 1] = True
-        pset_cal_spc[mask_cls0, 0] = True
-        amb = ~(mask_cls1 | mask_cls0)
-        pset_cal_spc[amb, :] = True
-        
-        # Construction des features et labels pour le gate
-        df_sel_arr = []
-        labels_g = []
+            # Prédictions SPCI
+            intervals = model2.predict_interval(X_SPCI)
+            L_cal = np.array([iv[0] for iv in intervals]).reshape(-1)
+            U_cal = np.array([iv[1] for iv in intervals]).reshape(-1)
+            pset_cal_spc = np.zeros_like(pset_cal_cls, dtype=bool)
+            mask_cls1 = threshold > U_cal
+            mask_cls0 = threshold < L_cal
+            pset_cal_spc[mask_cls1, 1] = True
+            pset_cal_spc[mask_cls0, 0] = True
+            amb = ~(mask_cls1 | mask_cls0)
+            pset_cal_spc[amb, :] = True
+            
+            # Construction des features et labels pour le gate
+            df_sel_arr = []
+            labels_g = []
 
-        for i in range(len(X_train)):
-            feat_vec = X_CP[i]
-            w_cls = int(pset_cal_cls[i].sum())
-            w_spc = int(pset_cal_spc[i].sum())
-            diff = w_cls - w_spc
+            for i in range(len(X_train)):
+                feat_vec = X_CP[i]
+                w_cls = int(pset_cal_cls[i].sum())
+                w_spc = int(pset_cal_spc[i].sum())
+                diff = w_cls - w_spc
 
-            # Calcul des erreurs (pour les labels uniquement)
-            y_true = int(y_cible[i])
-            err_cls = int(y_true not in np.where(pset_cal_cls[i])[0])
-            err_spc = int(y_true not in np.where(pset_cal_spc[i])[0])
+                # Calcul des erreurs (pour les labels uniquement)
+                y_true = int(y_cible[i])
+                err_cls = int(y_true not in np.where(pset_cal_cls[i])[0])
+                err_spc = int(y_true not in np.where(pset_cal_spc[i])[0])
 
-            # Logique de décision pour le gate
-            if err_cls == 0 and err_spc == 1:
-                gate_y = 0            # MCP
-            elif err_spc == 0 and err_cls == 1:
-                gate_y = 1            # SPCI
-            elif err_cls == 0 and err_spc == 0:
-                # tie-break: préfère le plus étroit; en cas d'égalité → SPCI
-                gate_y = 0 if (w_cls < w_spc) else 1
-            else:
-                gate_y = 2            # union
+                # Logique de décision pour le gate
+                if err_cls == 0 and err_spc == 1:
+                    gate_y = 0            # MCP
+                elif err_spc == 0 and err_cls == 1:
+                    gate_y = 1            # SPCI
+                elif err_cls == 0 and err_spc == 0:
+                    # tie-break: préfère le plus étroit; en cas d'égalité → SPCI
+                    gate_y = 0 if (w_cls < w_spc) else 1
+                else:
+                    gate_y = 2            # union
 
-            labels_g.append(gate_y)
+                labels_g.append(gate_y)
 
-            # Construction du vecteur de features (sans inclure les erreurs)
-            meta_vec = np.concatenate([feat_vec, [w_cls, w_spc, diff]])
-            df_sel_arr.append(meta_vec)
+                # Construction du vecteur de features (sans inclure les erreurs)
+                meta_vec = np.concatenate([feat_vec, [w_cls, w_spc, diff]])
+                df_sel_arr.append(meta_vec)
 
-        # Entraînement du modèle gate
-        X_gate_train = np.vstack(df_sel_arr)
-        labels_g = np.asarray(labels_g)
+            # Entraînement du modèle gate
+            X_gate_train = np.vstack(df_sel_arr)
+            labels_g = np.asarray(labels_g)
 
-        gate_clf.fit(X_gate_train, labels_g)
-        models_comb.append(gate_clf)
+            gate_clf.fit(X_gate_train, labels_g)
+            models_comb[(base_model, n)] = gate_clf
     
     return models_comb

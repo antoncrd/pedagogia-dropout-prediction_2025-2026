@@ -207,7 +207,7 @@ def main(
     print("Second dictionnaire de modèles enregistré dans root/models/models_clustering_SPCI_ng.joblib")
 
     # SPCI last grade analysis
-    models_lg = []
+    models_lg = {}
     INT_t = []
     if N is None:
         max_n = len(X_arr)
@@ -232,7 +232,7 @@ def main(
         model = TwoSidedSPCI_RFQuant_Offline(alpha=alpha2, w=300, random_state=42)
         model.fit(X_train, y_train)
         print(f"SPCI last grade entraîné pour le temps {i + w2}")
-        models_lg.append(model)
+        models_lg[i] = model
 
         X_i = X_arr[i]
         intervals = np.array([model.predict_interval(x) for x in X_i], dtype=float)
