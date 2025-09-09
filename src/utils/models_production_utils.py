@@ -806,7 +806,7 @@ class ConformalSPCIEvaluator:
 
         return pd.concat(res_metrics_all, ignore_index=True)
 
-def train_combined_models(dataframe, X_arr, y_cible, X_train, models_c_ng, models_lg, 
+def train_combined_models(dataframe, X_arr, y_cible, models_c_ng, models_lg, 
                           threshold, w2, prefixes=None, static_cols=None, 
                           n_estimators=300, max_depth=None, class_weight="balanced", 
                           random_state=42, n_jobs=-1, N = None):
@@ -821,8 +821,6 @@ def train_combined_models(dataframe, X_arr, y_cible, X_train, models_c_ng, model
         Array des features pour chaque n
     y_cible : array-like
         Labels cibles
-    X_train : array-like
-        Données d'entraînement
     models_c_ng : dict
         Dictionnaire des modèles MCP avec clés ('RF', n, 'vanilla')
     models_lg : dict
@@ -884,6 +882,7 @@ def train_combined_models(dataframe, X_arr, y_cible, X_train, models_c_ng, model
         if not isinstance(N, (int, np.integer)) or N <= 0:
             raise ValueError(f"N doit être un entier > 0, reçu {N!r}")
         stop = min(int(N), len(X_arr))
+    y_cible = np.asarray(y_cible, dtype=int).reshape(-1)
     for base_model in ['RF', 'GB']:
         for n in tqdm(range(w2 + 1, stop)):
             gate_clf = clone(clf)
@@ -915,7 +914,7 @@ def train_combined_models(dataframe, X_arr, y_cible, X_train, models_c_ng, model
             df_sel_arr = []
             labels_g = []
 
-            for i in range(len(X_train)):
+            for i in range(len(X_CP)):
                 feat_vec = X_CP[i]
                 w_cls = int(pset_cal_cls[i].sum())
                 w_spc = int(pset_cal_spc[i].sum())

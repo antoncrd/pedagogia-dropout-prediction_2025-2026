@@ -193,6 +193,7 @@ def main(
         df3.insert(loc - 1, col_name, ut)
 
     df3["clusters"] = df2["clusters"]
+    df3.to_csv(f"/app/data/DATA_SPCI_ng_{year}.csv", index=False, encoding="utf-8", mode="w")
 
     # Run analysis with clustering and next grade
     df_detail, df_agg, y_cible3, models_c_ng = run_analysis_w(
@@ -254,7 +255,6 @@ def main(
         dataframe=df3,
         X_arr=X_arr, 
         y_cible=y_cible3,
-        X_train=X_train,
         models_c_ng=models_c_ng,
         models_lg=models_lg,
         threshold=threshold,

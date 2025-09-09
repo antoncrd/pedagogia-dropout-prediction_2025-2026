@@ -3,7 +3,7 @@
 Système modulaire pour **prévoir le risque de décrochage** à partir des traces pédagogiques (projets, tests unitaires, notes). 
 Le pipeline couvre : ingestion des données, normalisation en CSV, agrégation/merge par étudiant, puis **production d’un modèle** (clustering + prédiction séquentielle) avec métriques.
 
-> Tech: Python 3.11, scikit‑learn, UMAP, Docker (optionnel).
+> Tech: Python 3.12, scikit‑learn, UMAP, Docker (optionnel).
 
 ---
 
@@ -43,7 +43,7 @@ pedagogia-dropout-prediction_2025-2026/
 
 ## 🧰 Prérequis
 
-- **Python 3.11+**
+- **Python 3.12+**
 - (Optionnel) **Docker** ≥ 24
 - Accès API + **variables d’environnement** (via `.env`) :  
   - `TOKEN_ID`  
