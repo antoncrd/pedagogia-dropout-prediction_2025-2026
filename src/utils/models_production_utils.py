@@ -878,10 +878,16 @@ def train_combined_models(dataframe, X_arr, y_cible, X_train, models_c_ng, model
     if static_cols is None:
         static_cols = []
     
+    if N is None:
+        stop = len(X_arr)
+    else:
+        if not isinstance(N, (int, np.integer)) or N <= 0:
+            raise ValueError(f"N doit être un entier > 0, reçu {N!r}")
+        stop = min(int(N), len(X_arr))
     for base_model in ['RF', 'GB']:
-        for n in tqdm(range(w2 + 1, N)):
+        for n in tqdm(range(w2 + 1, stop)):
             gate_clf = clone(clf)
-            X_SPCI = X_arr[n]  # Correction: utiliser n au lieu de i
+            X_SPCI = X_arr[n] 
             X_CP = build_X_s(dataframe, prefixes, static_cols, n)
 
             model1 = models_c_ng[(base_model, n, 'vanilla')]  # ou "mondrian"
@@ -889,12 +895,12 @@ def train_combined_models(dataframe, X_arr, y_cible, X_train, models_c_ng, model
 
             # Prédictions MCP
             y_pred_mcp_gate, yps_mcp_gate = model1.predict(
-                X_CP, alpha=0.05, partition=dataframe['clusters']
+                X_CP, alpha=0.05 # partition=dataframe['clusters']
             )
             pset_cal_cls = yps_mcp_gate[:, :, 0].astype(bool)
 
             # Prédictions SPCI
-            intervals = model2.predict_interval(X_SPCI)
+            intervals = np.array([model2.predict_interval(x) for x in X_SPCI], dtype=float)
             L_cal = np.array([iv[0] for iv in intervals]).reshape(-1)
             U_cal = np.array([iv[1] for iv in intervals]).reshape(-1)
             pset_cal_spc = np.zeros_like(pset_cal_cls, dtype=bool)
