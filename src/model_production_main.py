@@ -142,6 +142,9 @@ def main(
     df_detail, df_agg, y_cible2, models_c = run_analysis_w(
         df=df2, threshold=threshold, do_plot=False, N=N
     )
+
+    y_cible2.to_csv(f"/app/data/y_true_{year}", index=False, encoding="utf-8", mode="w")
+
     models = {}
     models["+ clustering"] = models_c
     print("Modèles avec clustering entraînés")
@@ -197,7 +200,7 @@ def main(
 
     # Run analysis with clustering and next grade
     df_detail, df_agg, y_cible3, models_c_ng = run_analysis_w(
-        df=df3, threshold=threshold, do_plot=False
+        df=df3, y=y_cible2, do_plot=False
     )
     models["+ clustering + SPCI next grade"] = models_c_ng
 
@@ -254,7 +257,7 @@ def main(
     models_comb = train_combined_models(
         dataframe=df3,
         X_arr=X_arr, 
-        y_cible=y_cible3,
+        y_cible=y_cible2,
         models_c_ng=models_c_ng,
         models_lg=models_lg,
         threshold=threshold,
@@ -262,7 +265,8 @@ def main(
         prefixes=prefixes,   
         static_cols=static_cols,   
         n_estimators=500,  
-        random_state=42
+        random_state=42,
+        N = N
     )
     models["CP + SPCI last grade combined"] = models_comb
     save_models_bundle(models_comb, f"/app/models/models_comb_{year}.joblib", compress=3)

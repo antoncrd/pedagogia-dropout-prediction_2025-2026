@@ -49,9 +49,9 @@ def run_analysis_w(
         raise ValueError("Must contain an 'email' column.")
 
     df0 = df0.fillna(nan_fill).rename(columns={"email": "student_id"})
+    mark_cols = [c for c in df0.columns if c.endswith("mark")][::-1]
     if y is None:
         # Extraction des dernières notes et normalisation
-        mark_cols = [c for c in df0.columns if c.endswith("mark")][::-1]
         def last_marks(row):
             vals, cols = [], []
             for c in mark_cols:
@@ -866,7 +866,7 @@ def train_combined_models(dataframe, X_arr, y_cible, models_c_ng, models_lg,
     )
     
     models_comb = {}
-    
+    dataframe = dataframe.fillna(0)
     # Calcul automatique des prefixes si non fourni
     if prefixes is None:
         mark_cols = [c for c in dataframe.columns if c.endswith("mark")]
@@ -876,17 +876,13 @@ def train_combined_models(dataframe, X_arr, y_cible, models_c_ng, models_lg,
     if static_cols is None:
         static_cols = []
     
-    if N is None:
-        stop = len(X_arr)
-    else:
-        if not isinstance(N, (int, np.integer)) or N <= 0:
-            raise ValueError(f"N doit être un entier > 0, reçu {N!r}")
-        stop = min(int(N), len(X_arr))
+    total_slices = len(X_arr)
+    stop = total_slices if N is None else min(int(N), total_slices)
     y_cible = np.asarray(y_cible, dtype=int).reshape(-1)
     for base_model in ['RF', 'GB']:
-        for n in tqdm(range(w2 + 1, stop)):
+        for n in tqdm(range(w2 + 1, stop), desc=f"Entrainement des méta modèles"):
             gate_clf = clone(clf)
-            X_SPCI = X_arr[n] 
+            X_SPCI = X_arr[n - w2] 
             X_CP = build_X_s(dataframe, prefixes, static_cols, n)
 
             model1 = models_c_ng[(base_model, n, 'vanilla')]  # ou "mondrian"
