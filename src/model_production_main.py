@@ -239,6 +239,7 @@ def main(
         models_lg[i + w2] = model
 
         X_i = X_arr[i]
+        X_i.to_csv(f"/app/data/DATA_SPCI_lg_{year}/DATA_SPCI_lg_{i}.csv", index=False)
         intervals = np.array([model.predict_interval(x) for x in X_i], dtype=float)
         # L, U = intervals[:, 0], intervals[:, 1]
         INT_t.append(intervals)
