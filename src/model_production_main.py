@@ -143,7 +143,7 @@ def main(
         df=df2, threshold=threshold, do_plot=False, N=N
     )
 
-    y_cible2.to_csv(f"/app/data/y_true_{year}", index=False, encoding="utf-8", mode="w")
+    y_cible2.to_csv(f"/app/data/y_true_{year}.csv", index=False, encoding="utf-8", mode="w")
 
     models = {}
     models["+ clustering"] = models_c
