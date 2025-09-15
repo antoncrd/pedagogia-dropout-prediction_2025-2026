@@ -36,3 +36,17 @@ services:
       --year 24
       --data_file /app/data/DATA.csv
     restart: "no"
+
+  metabase:
+    image: metabase/metabase:v0.54.8
+    container_name: metabase-dev
+    ports:
+      - "3000:3000"           
+    environment:
+      # Où Metabase stocke sa base interne (H2) À L’INTÉRIEUR du conteneur
+      MB_DB_FILE: /metabase-data/metabase.db
+    volumes:
+      # Base interne (dashboards, utilisateurs, etc.)
+      - ./metabase-data:/metabase-data
+      # Fichier de données métier monté en lecture seule
+      - ./data/traces_metabase.db:/data/traces_metabase.db:ro
