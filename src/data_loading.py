@@ -5,12 +5,6 @@ Data Loading Pipeline Script
 This script orchestrates the data loading process for the dropout prediction project.
 It executes a series of Python scripts to fetch data, convert JSON to CSV, aggregate,
 and merge the data into a final CSV file.
-
-Usage:
-    python data_loading_julien.py --year 2024 --units B-CPE-100 B-CPE-110 --data_dir data --utils_dir utils
-
-Author: Julien (based on original data_loading.py)
-Date: September 2025
 """
 
 import argparse
@@ -51,25 +45,26 @@ def main(year: int, units: List[str], data_dir: str, utils_dir: str) -> None:
         utils_dir (str): Path to the utils directory containing scripts.
     """
     # Determine root directory
-    root = Path(__file__).resolve().parent
 
-    # Define directories
-    data_dir_path = root / data_dir
-    data_json = data_dir_path / "data_json"
-    data_csv = data_dir_path / "data_csv"
-    data_fin = data_dir_path / "data_fin"
+    # APRÈS
+    script_dir = Path(__file__).resolve().parent      # /app/src
+    repo_root  = script_dir.parent                    # /app
 
-    # Create directories if they don't exist
-    data_dir_path.mkdir(parents=True, exist_ok=True)
-    data_json.mkdir(parents=True, exist_ok=True)
-    data_csv.mkdir(parents=True, exist_ok=True)
-    data_fin.mkdir(parents=True, exist_ok=True)
+    def resolve_under(base: Path, p: str | Path) -> Path:
+        p = Path(p)
+        return p if p.is_absolute() else (base / p)
 
-    # Define script paths
-    get_data_py = root / utils_dir / "data_loading_utils" / "get_data.py"
-    all_json_to_csv_py = root / utils_dir / "data_loading_utils" / "all_json_to_csv.py"
-    aggregate_csv_py = root / utils_dir / "data_loading_utils" / "aggregate_csv.py"
-    merged_csv_py = root / utils_dir / "data_loading_utils" / "merged_csv.py"
+    data_dir_path   = resolve_under(repo_root, data_dir)         # -> /app/data
+    utils_dir_path  = resolve_under(script_dir, utils_dir)       # -> /app/src/utils
+
+    get_data_py        = utils_dir_path / "data_loading_utils" / "get_data.py"
+    all_json_to_csv_py = utils_dir_path / "data_loading_utils" / "all_json_to_csv.py"
+    aggregate_csv_py   = utils_dir_path / "data_loading_utils" / "aggregate_csv.py"
+    merged_csv_py      = utils_dir_path / "data_loading_utils" / "merged_csv.py"
+
+    data_json = data_dir_path / "data_json" / str(year)
+    data_csv  = data_dir_path / "data_csv"  / str(year)
+    data_fin  = data_dir_path / "data_fin"  / str(year)
 
     # Step 1: Retrieve data for each unit
     print("Step 1: Retrieving data...")
@@ -100,8 +95,7 @@ def main(year: int, units: List[str], data_dir: str, utils_dir: str) -> None:
     print("Step 4: Merging CSV files into final output...")
     run_cmd([
         sys.executable, str(merged_csv_py),
-        "--indir", str(data_fin),
-        "--out", str(data_dir_path / "DATA.csv")
+        "--year", str(year)
     ])
 
     print("Data loading pipeline completed successfully!")

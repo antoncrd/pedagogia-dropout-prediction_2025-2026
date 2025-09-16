@@ -40,40 +40,43 @@ ORDERED_FILES = [
 
 def main():
     ap = argparse.ArgumentParser(description="Fusion horizontale des CSV par email, dans un ordre imposé.")
-    ap.add_argument("--indir", type=Path, default=Path("data/data_fin"),
+    ap.add_argument("--year", type=int, required=True,
+                    help="Année cible (ex: 2024). Utilisée pour construire les chemins par défaut.")
+    ap.add_argument("--indir", type=Path, default=None,
                     help="Dossier contenant les CSV agrégés (défaut: data/data_fin)")
-    ap.add_argument("--out", type=Path, default=Path("data/DATA.csv"),
+    ap.add_argument("--out", type=Path, default=None,
                     help="Chemin du CSV fusionné en sortie (défaut: data/DATA.csv)")
     args = ap.parse_args()
+    year_str = str(args.year)
+    indir = args.indir or (Path("data") / "data_fin" / year_str)
+    out_path = args.out or (Path("data") / f"DATA_{year_str}.csv")
+    if not indir.exists():
+        raise SystemExit(f"❌ Le dossier d'entrée n'existe pas: {indir.resolve()}")
+    out_path.parent.mkdir(parents=True, exist_ok=True)
 
-    args.out.parent.mkdir(parents=True, exist_ok=True)
-
-    ordered_paths = [args.indir / f for f in ORDERED_FILES]
+    ordered_paths = [indir / f for f in ORDERED_FILES]
     missing = [p.name for p in ordered_paths if not p.exists()]
     if missing:
         print("⚠️  Fichiers manquants (ignorés) :", ", ".join(missing))
     existing_paths = [p for p in ordered_paths if p.exists()]
     if not existing_paths:
-        print(f"❌ Aucun des fichiers attendus n'a été trouvé dans {args.indir.resolve()}")
+        print(f"❌ Aucun des fichiers attendus n'a été trouvé dans {indir.resolve()}")
         raise SystemExit(1)
 
-    # 1) Lecture + dédup par email
     dfs = []
     for p in existing_paths:
         df = pd.read_csv(p)
         if "email" not in df.columns:
             raise ValueError(f"{p.name} ne contient pas de colonne 'email'")
         df = df.drop_duplicates(subset=["email"])
-        # 2) Préfixer chaque colonne (sauf email) par le nom de fichier (sans .csv)
         prefix = p.stem
         df = df.rename(columns={c: f"{prefix}_{c}" for c in df.columns if c != "email"})
         dfs.append(df)
 
-    # 3) Fusion horizontale (outer) sur email
     merged = reduce(lambda left, right: pd.merge(left, right, on="email", how="outer"), dfs)
 
-    merged.to_csv(args.out, index=False)
-    print(f"✅ CSV fusionné : {args.out}  –  {merged.shape[0]} lignes × {merged.shape[1]} colonnes")
+    merged.to_csv(out_path, index=False)
+    print(f"✅ CSV fusionné : {out_path}  –  {merged.shape[0]} lignes × {merged.shape[1]} colonnes")
 
 if __name__ == "__main__":
     main()

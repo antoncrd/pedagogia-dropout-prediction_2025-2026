@@ -186,7 +186,6 @@ def import_csv_to_table(
     types = [("TEXT" if t == "NULL" else t) for t in types]
 
     cur = con.cursor()
-    con.execute("PRAGMA journal_mode = WAL;")
     con.execute("PRAGMA synchronous = NORMAL;")
 
     # Création de table

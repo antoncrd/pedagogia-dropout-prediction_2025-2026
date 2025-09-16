@@ -3,6 +3,8 @@ services:
     build:
       context: .
     container_name: data_loading_service
+    env_file:
+      - .env   
     environment:
       - PYTHONUNBUFFERED=1
       - PYTHONPATH=/app/src
@@ -13,7 +15,7 @@ services:
       - ./models:/app/models:rw
     command: >
       python -u -m src.data_loading
-      --year 2023
+      --year 2024
       --data_dir /app/data
       --utils_dir /app/src/utils
     restart: "no"
@@ -36,16 +38,35 @@ services:
       --data_file /app/data/DATA.csv
     restart: "no"
 
+  # --- Job one-shot : convertit CSV -> SQLite puis s'arrête (exit 0) ---
+  csv-to-sqlite:
+    image: python:3.12-slim
+    container_name: csv_to_sqlite_job
+    working_dir: /app
+    volumes:
+      - ./src:/app/src:ro         # contient csv_to_sqlite.py
+      - ./data:/app/data:rw       # CSV en entrée + .db en sortie
+    command: >
+      python /app/src/utils/csv_to_sqlite.py
+      /app/data/DATA.csv
+      /app/data/traces_metabase.db
+      --table traces
+      --if-exists replace
+      --index email
+    restart: "no"
+
+  # --- Metabase : démarre après que le job ci-dessus ait réussi ---
   metabase:
     image: metabase/metabase:v0.54.8
-    container_name: metabase-dev
+    container_name: metabase-dev-dp
     ports:
-      - "3000:3000"           
+      - "3000:3000"
     environment:
-      # Où Metabase stocke sa base interne (H2) À L’INTÉRIEUR du conteneur
-      MB_DB_FILE: /metabase-data/metabase.db
+      MB_DB_FILE: /metabase-data/metabase.db   # base interne Metabase (H2)
+      TZ: Europe/Paris
     volumes:
-      # Base interne (dashboards, utilisateurs, etc.)
-      - ./metabase-data:/metabase-data
-      # Fichier de données métier monté en lecture seule
-      - ./data/traces_metabase.db:/data/traces_metabase.db:ro
+      - ./metabase-data:/metabase-data         # persistance Metabase (H2)
+      - ./data:/data:rw                        # tes .db SQLite accessibles
+    depends_on:
+      csv-to-sqlite:
+        condition: service_completed_successfully
