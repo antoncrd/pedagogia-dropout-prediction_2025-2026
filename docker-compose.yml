@@ -43,16 +43,32 @@ services:
     image: python:3.12-slim
     container_name: csv_to_sqlite_job
     working_dir: /app
+    environment:                      # ✨ MODIF (tout est défini ici)
+      CSV_INPUT: "/app/data/DATA.csv"                # chemin CSV d'entrée
+      SQLITE_OUTPUT: "/app/data/traces_metabase.db"  # chemin DB SQLite de sortie
+      TABLE: "traces"
+      IF_EXISTS: "replace"            # fail|replace|append
+      INDEX_COLS: "email"
+      PK_COL: "email"
+      INCLUDE_PREFIXES: "B-CPE-100"  
+      KEEP_COLS: "email"      
+      # MATCH_CASE: "1"                
     volumes:
-      - ./src:/app/src:ro         # contient csv_to_sqlite.py
-      - ./data:/app/data:rw       # CSV en entrée + .db en sortie
-    command: >
-      python /app/src/utils/csv_to_sqlite.py
-      /app/data/DATA.csv
-      /app/data/traces_metabase.db
-      --table traces
-      --if-exists replace
-      --index email
+      - ./src:/app/src:ro           # contient csv_to_sqlite.py
+      - ./data:/app/data:rw         # CSV en entrée + .db en sortie
+    entrypoint: ["/bin/sh","-c"]   
+    command: |                   
+      set -e
+      python /app/src/utils/csv_to_sqlite.py \
+        "${CSV_INPUT}" \
+        "${SQLITE_OUTPUT}" \
+        --table "${TABLE}" \
+        --if-exists "${IF_EXISTS}" \
+        --index "${INDEX_COLS}" \
+        --pk "${PK_COL}" \
+        --include-prefixes "${INCLUDE_PREFIXES}" \
+        --keep-cols "${KEEP_COLS}" \
+        ${MATCH_CASE:+--match-case}
     restart: "no"
 
   # --- Metabase : démarre après que le job ci-dessus ait réussi ---
