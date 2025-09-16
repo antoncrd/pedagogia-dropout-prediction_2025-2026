@@ -85,18 +85,12 @@ def prepare_features(df: pd.DataFrame, year: int) -> pd.DataFrame:
     Returns:
         pd.DataFrame: Feature matrix X.
     """
-    if year == 24:
-        # CPE 2024
-        dfcpool = df[[c for c in df.columns if c.startswith("B-CPE-100")]]
-        pat = re.compile(r"B-CPE-100_cpoolday\d+_\d{2} - task\d+_passed")
-        cols_keep = [c for c in dfcpool.columns if not pat.match(c)]
-        dfcpool_mark = dfcpool[cols_keep]
-        X = dfcpool_mark.fillna(0)
-    elif year == 23:
-        # CPE 2023
-        X = df[[c for c in df.columns if c.startswith("B-CPE-110_settingup")]].fillna(0)
-    else:
-        raise ValueError(f"Unsupported year: {year}")
+
+    dfcpool = df[[c for c in df.columns if c.startswith("B-CPE-100")]]
+    pat = re.compile(r"B-CPE-100_cpoolday\d+_\d{2} - task\d+_passed")
+    cols_keep = [c for c in dfcpool.columns if not pat.match(c)]
+    dfcpool_mark = dfcpool[cols_keep]
+    X = dfcpool_mark.fillna(0)
     return X
 
 
