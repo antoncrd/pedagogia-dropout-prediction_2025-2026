@@ -224,7 +224,6 @@ def main(
                 y_j = Xt[keys[-1]].iloc[:, 3]
             y.append(y_j)
         y_arr2 = [s.values for s in y]
-
         X_train = np.vstack(X_arr[:i])
         y_train = np.concatenate(y_arr2[:i])
         model = TwoSidedSPCI_RFQuant_Offline(alpha=alpha2, w=300, random_state=42)
@@ -233,7 +232,7 @@ def main(
         models_lg[i + 1 + w2] = model
 
         X_i = X_arr[i]
-        X_i.to_csv(f"/app/data/DATA_SPCI_lg_{year}/DATA_SPCI_lg_{i}.csv", index=False)
+        X_i.to_csv(f"/app/data/DATA_SPCI_lg_{year}/DATA_SPCI_lg_{i + 1 + w2}.csv", index=False)
         intervals = np.array([model.predict_interval(x) for x in X_i], dtype=float)
         # L, U = intervals[:, 0], intervals[:, 1]
         INT_t.append(intervals)
@@ -266,7 +265,7 @@ def main(
 
     models["CP + SPCI last grade combined"] = models_comb1
     save_models_bundle(models_comb1, f"/app/models/models_comb1_{year}.joblib", compress=3)
-    
+
     print("Quatrième dictionnaire de modèles enregistré dans root/models/models_comb2.joblib")
 
     models_comb2 = train_combined_models(

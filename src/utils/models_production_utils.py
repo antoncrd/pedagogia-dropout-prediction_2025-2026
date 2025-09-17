@@ -879,7 +879,7 @@ def train_combined_models(dataframe, X_arr, y_cible, models_c_ng, models_lg,
     total_slices = len(X_arr)
     stop = total_slices if N is None else min(int(N), total_slices)
     y_cible = np.asarray(y_cible, dtype=int).reshape(-1)
-    for base_model in ['RF', 'GB']:
+    for base_model in ['GB']:
         for n in tqdm(range(w2 + 1, stop), desc=f"Entrainement des méta modèles"):
             gate_clf = clone(clf)
             X_SPCI = X_arr[n - w2] 
