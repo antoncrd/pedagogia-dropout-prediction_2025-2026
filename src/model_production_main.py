@@ -229,8 +229,8 @@ def main(
         y_train = np.concatenate(y_arr2[:i])
         model = TwoSidedSPCI_RFQuant_Offline(alpha=alpha2, w=300, random_state=42)
         model.fit(X_train, y_train)
-        print(f"SPCI last grade entraîné pour le temps {i + w2}")
-        models_lg[i + w2] = model
+        print(f"SPCI last grade entraîné pour le temps {i + 1 + w2}")
+        models_lg[i + 1 + w2] = model
 
         X_i = X_arr[i]
         X_i.to_csv(f"/app/data/DATA_SPCI_lg_{year}/DATA_SPCI_lg_{i}.csv", index=False)
@@ -249,7 +249,27 @@ def main(
     prefixes = list(dict.fromkeys(c.rsplit("_",1)[0] for c in mark_cols))
     static_cols = []
 
-    models_comb = train_combined_models(
+    models_comb1 = train_combined_models(
+        dataframe=df2,
+        X_arr=X_arr, 
+        y_cible=y_cible2,
+        models_c_ng=models_c_ng,
+        models_lg=models_lg,
+        threshold=threshold,
+        w2=w2,
+        prefixes=prefixes,   
+        static_cols=static_cols,   
+        n_estimators=500,  
+        random_state=42,
+        N = N
+    )
+
+    models["CP + SPCI last grade combined"] = models_comb1
+    save_models_bundle(models_comb1, f"/app/models/models_comb1_{year}.joblib", compress=3)
+    
+    print("Quatrième dictionnaire de modèles enregistré dans root/models/models_comb2.joblib")
+
+    models_comb2 = train_combined_models(
         dataframe=df3,
         X_arr=X_arr, 
         y_cible=y_cible2,
@@ -263,10 +283,10 @@ def main(
         random_state=42,
         N = N
     )
-    models["CP + SPCI last grade combined"] = models_comb
-    save_models_bundle(models_comb, f"/app/models/models_comb_{year}.joblib", compress=3)
+    models["CP ng + SPCI last grade combined"] = models_comb2
+    save_models_bundle(models_comb2, f"/app/models/models_comb2_{year}.joblib", compress=3)
 
-    print("Dernier dictionnaire de modèles enregistré dans root/models/models_comb.joblib")
+    print("Dernier dictionnaire de modèles enregistré dans root/models/models_comb2.joblib")
 
     print("Model production pipeline completed!")
 
