@@ -98,7 +98,7 @@ def run_analysis_w(
 
     # Classifiers
     MODELS = {
-        "RF":  RandomForestClassifier(n_estimators=1000, random_state=42),
+        # "RF":  RandomForestClassifier(n_estimators=1000, random_state=42),
         "GB": GradientBoostingClassifier(random_state=42)
     }
 
