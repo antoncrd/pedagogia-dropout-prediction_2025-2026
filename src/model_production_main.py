@@ -44,7 +44,7 @@ DEFAULT_N_CLUSTERS = 4
 DEFAULT_MIN_CLUSTER_SIZE = 50
 DEFAULT_DATA_FILE = "data/DATA.csv"
 
-def load_and_preprocess_data(data_file: str, year: int) -> pd.DataFrame:
+def load_and_preprocess_data(data_file: str, year: int, normalize_marks: bool = True) -> pd.DataFrame:
     """
     Load and preprocess the data from CSV file.
 
@@ -60,7 +60,8 @@ def load_and_preprocess_data(data_file: str, year: int) -> pd.DataFrame:
 
     # Normalize mark columns
     mark_cols = [c for c in df.columns if c.endswith("mark")]
-    df[mark_cols] = df[mark_cols].div(df[mark_cols].mean())
+    if normalize_marks:
+        df[mark_cols] = df[mark_cols].div(df[mark_cols].mean())
 
     # Handle NaN values based on year
     nb_nan_par_ligne = df.isna().sum(axis=1)

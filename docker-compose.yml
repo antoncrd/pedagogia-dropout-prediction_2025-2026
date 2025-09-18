@@ -51,12 +51,12 @@ services:
       - ./data:/app/data:rw         # CSV en entrée + .db en sortie
     command: [
       "python", "-u", "/app/src/csv_to_sqlite.py",
-      "--input_csv", "/app/data/DATA.csv",
+      "--input_csv", "/app/data/DATA_2024_pred.csv",
       "--output_db", "/app/data/traces_metabase.db",
       "--table", "traces",
       "--if-exists", "replace",
       "--index", "email",
-      "--include-prefixes", "B-CPE-100",
+      "--include-prefixes", "B-CPE-100, prediction",
       "--keep-cols", "email"
     ]
     restart: "no"

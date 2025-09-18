@@ -28,7 +28,7 @@ import argparse
 import sqlite3
 from pathlib import Path
 import pandas as pd
-
+from typing import Iterable
 
 def _split_csv(s: str | None) -> list[str]:
     if not s:
@@ -46,11 +46,11 @@ def select_columns(df: pd.DataFrame, prefixes: list[str], keep_cols: list[str]) 
     return df[cols]
 
 
-def coerce_numeric(df: pd.DataFrame) -> pd.DataFrame:
-    # Tu as indiqué que le script ne contient que des valeurs numériques :
-    # on convertit tout ce qui peut l’être; le reste sera NaN.
+def coerce_numeric(df: pd.DataFrame, skip: Iterable[str] = ("email",)) -> pd.DataFrame:
     out = df.copy()
-    for c in out.columns:
+    # Colonnes à convertir (toutes sauf celles à exclure)
+    to_convert = [c for c in out.columns if c not in set(skip)]
+    for c in to_convert:
         out[c] = pd.to_numeric(out[c], errors="coerce")
     return out
 
@@ -86,7 +86,7 @@ def main():
     df = select_columns(df, prefixes, keep_cols)
 
     # 3) Conversion numérique
-    df = coerce_numeric(df)
+    df = coerce_numeric(df, skip=["email"])
 
     # 4) Écriture SQLite
     conn = sqlite3.connect(args.output_db)
