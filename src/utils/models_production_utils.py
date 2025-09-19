@@ -877,10 +877,10 @@ def train_combined_models(dataframe, X_arr, y_cible, models_c_ng, models_lg,
         static_cols = []
     
     total_slices = len(X_arr)
-    stop = total_slices if N is None else min(int(N), total_slices)
+    stop = total_slices if N is None else min(int(N) + 1, total_slices)
     y_cible = np.asarray(y_cible, dtype=int).reshape(-1)
     for base_model in ['GB']:
-        for n in tqdm(range(w2 + 1, stop), desc=f"Entrainement des méta modèles"):
+        for n in tqdm(range(w2 + 2, stop), desc=f"Entrainement des méta modèles"):
             gate_clf = clone(clf)
             X_SPCI = X_arr[n - w2] 
             X_CP = build_X_s(dataframe, prefixes, static_cols, n)
@@ -890,7 +890,7 @@ def train_combined_models(dataframe, X_arr, y_cible, models_c_ng, models_lg,
 
             # Prédictions MCP
             y_pred_mcp_gate, yps_mcp_gate = model1.predict(
-                X_CP, alpha=0.05 # partition=dataframe['clusters']
+                X_CP, alpha=0.1 # partition=dataframe['clusters']
             )
             pset_cal_cls = yps_mcp_gate[:, :, 0].astype(bool)
 
@@ -943,6 +943,6 @@ def train_combined_models(dataframe, X_arr, y_cible, models_c_ng, models_lg,
             labels_g = np.asarray(labels_g)
 
             gate_clf.fit(X_gate_train, labels_g)
-            models_comb[(base_model, n)] = gate_clf
+            models_comb[(base_model, n)] = gate_clf ##TODO: INDEX 
     
     return models_comb

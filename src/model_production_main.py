@@ -233,7 +233,8 @@ def main(
         models_lg[i + 1 + w2] = model
 
         X_i = X_arr[i]
-        X_i.to_csv(f"/app/data/DATA_SPCI_lg_{year}/DATA_SPCI_lg_{i + 1 + w2}.csv", index=False)
+        df_i = pd.DataFrame(X_i)
+        df_i.to_csv(f"/app/data/DATA_SPCI_lg_{year}/DATA_SPCI_lg_{i + 1 + w2}.csv", index=False)
         intervals = np.array([model.predict_interval(x) for x in X_i], dtype=float)
         # L, U = intervals[:, 0], intervals[:, 1]
         INT_t.append(intervals)
