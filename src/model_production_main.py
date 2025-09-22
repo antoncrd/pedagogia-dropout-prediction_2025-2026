@@ -153,7 +153,7 @@ def main(
     # Build UMAP windows and SPCI next grade
     print("Création des features pour SPCI")
     # Xt, keys, X_arr, y_arr = build_umap_windows_by_suffix(df1, w=w1, H=0, target_col_idx=3, verbose=True)
-    Xt = build_umap_by_suffix(df1, id_col="email", test_suffix="passed", warnings=False)
+    Xt = build_umap_by_suffix(df1, id_col="email", test_suffix="passed")
     keys = list(Xt.keys())
     X_arr, y_arr = build_windows_from_Xt(Xt, w=w1, H=0, target_col_idx=3)
 
