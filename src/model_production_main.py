@@ -35,7 +35,9 @@ from utils.model_production_data_processing_utils import(
     save_models_bundle,
     cluster_with_min_size,
     build_umap_windows_by_suffix,
-    compute_threshold_kmeans
+    compute_threshold_kmeans,
+    build_umap_by_suffix,
+    build_windows_from_Xt
 )
 
 # Default constants
@@ -149,9 +151,11 @@ def main(
     print("Premier dictionnaire de modèles enregistré dans root/models/models_clustering.joblib")
 
     # Build UMAP windows and SPCI next grade
-    Xt, keys, X_arr, y_arr = build_umap_windows_by_suffix(
-        df1, w=w1, H=0, target_col_idx=3, verbose=True
-    )
+    print("Création des features pour SPCI")
+    # Xt, keys, X_arr, y_arr = build_umap_windows_by_suffix(df1, w=w1, H=0, target_col_idx=3, verbose=True)
+    Xt = build_umap_by_suffix(df1, id_col="email", test_suffix="passed", warnings=False)
+    keys = list(Xt.keys())
+    X_arr, y_arr = build_windows_from_Xt(Xt, w=w1, H=0, target_col_idx=3)
 
     U_t = []
     if N is None:
@@ -159,7 +163,7 @@ def main(
     else:
         if not isinstance(N, (int, np.integer)) or N <= 0:
             raise ValueError(f"N doit être un entier > 0, reçu {N!r}")
-        max_n = min(len(X_arr), int(N - w1))
+        max_n = min(len(X_arr), int(N - w1 + 1))
     for i in tqdm(range(1, max_n), desc="Processing windows for SPCI next grade"):
         X_train = np.vstack(X_arr[:i])
         y_train = np.concatenate(y_arr[:i])
@@ -176,7 +180,7 @@ def main(
     suffixes = cols.apply(lambda x: x.split("_")[1])
     ordered_suffixes = suffixes.unique()
     prefixes2 = (
-        df3.drop(columns=["email"])
+        df3.drop(columns=["email", "source"])
         .columns.str.split("_")
         .str[:2]
         .str.join("_")
@@ -206,14 +210,16 @@ def main(
     print("Second dictionnaire de modèles enregistré dans root/models/models_clustering_SPCI_ng.joblib")
 
     # SPCI last grade analysis
+    X_arrlg, y_arrlg = build_windows_from_Xt(Xt, w=w2, H=0, target_col_idx=3)
+
     models_lg = {}
     INT_t = []
     if N is None:
-        max_n = len(X_arr)
+        max_n = len(X_arrlg)
     else:
         if not isinstance(N, (int, np.integer)) or N <= 0:
             raise ValueError(f"N doit être un entier > 0, reçu {N!r}")
-        max_n = min(len(X_arr), int(N - w2))
+        max_n = min(len(X_arrlg), int(N - w2 + 1))
 
     for i in tqdm(range(1, max_n), desc="Processing windows for SPCI last grade"):
         H = len(keys) - i - w2
@@ -225,19 +231,20 @@ def main(
                 y_j = Xt[keys[-1]].iloc[:, 3]
             y.append(y_j)
         y_arr2 = [s.values for s in y]
-        X_train = np.vstack(X_arr[:i])
+        X_train = np.vstack(X_arrlg[:i])
         y_train = np.concatenate(y_arr2[:i])
         model = TwoSidedSPCI_RFQuant_Offline(alpha=alpha2, w=300, random_state=42)
         model.fit(X_train, y_train)
-        print(f"SPCI last grade entraîné pour le temps {i + 1 + w2}")
-        models_lg[i + 1 + w2] = model
+        print(f"SPCI last grade entraîné pour le temps {i + w2}")
+        models_lg[i + w2] = model
 
-        X_i = X_arr[i]
+        X_i = X_arrlg[i]
         df_i = pd.DataFrame(X_i)
-        df_i.to_csv(f"/app/data/DATA_SPCI_lg_{year}/DATA_SPCI_lg_{i + 1 + w2}.csv", index=False)
+        df_i.to_csv(f"/app/data/DATA_SPCI_lg_{year}/DATA_SPCI_lg_{i + w2}.csv", index=False)
         intervals = np.array([model.predict_interval(x) for x in X_i], dtype=float)
         # L, U = intervals[:, 0], intervals[:, 1]
         INT_t.append(intervals)
+        print(intervals[0])
     models["SPCI last grade"] = models_lg
 
     print("Modèles SPCI last grade entraînés")
@@ -254,7 +261,7 @@ def main(
         dataframe=df2,
         X_arr=X_arr, 
         y_cible=y_cible2,
-        models_c_ng=models_c_ng,
+        models_c_ng=models_c,
         models_lg=models_lg,
         threshold=threshold,
         w2=w2,

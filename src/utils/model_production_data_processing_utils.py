@@ -266,6 +266,160 @@ def build_umap_windows_by_suffix(
     return Xt, keys, X_array_hori, y_array_hori
 
 
+
+def build_umap_by_suffix(
+    df1: pd.DataFrame,
+    *,
+    id_col: str = "email",
+    test_suffix: str = "passed",
+    # UMAP
+    n_components: int = 3,
+    n_neighbors: int = 50,
+    min_dist: float = 0.1,
+    metric: str = "hamming",
+    random_state: int = 42,
+    verbose: bool = True,
+) -> Dict[str, pd.DataFrame]:
+    """
+    Regroupe les colonnes par suffixe (après le premier '_').
+    Pour chaque suffixe :
+      - UMAP sur les colonnes finissant par `test_suffix` (ex. '*_passed'),
+        normalisé dans [0,1],
+      - concatène ces UMAP features avec les autres colonnes du même suffixe.
+
+    Retourne
+    --------
+    Xt : dict {suffix -> DataFrame} avec index aligné à df1 et colonnes concaténées
+         (UMAP normalisé + non-tests). Les clés (ordre d'insertion) respectent
+         l'ordre d'apparition des suffixes dans df1.
+    """
+    # 0) Colonnes candidates (on ignore id_col si présent)
+    cols_all = df1.columns.drop(id_col, errors="ignore")
+
+    # Conserver uniquement les colonnes qui contiennent un '_'
+    cols_with_us = [c for c in cols_all if "_" in c]
+    if not cols_with_us:
+        raise ValueError("Aucune colonne avec '_' trouvée pour extraire les suffixes.")
+
+    # 1) Extraire les suffixes (après le premier '_') en conservant l'ordre d'apparition
+    col_series = pd.Series(cols_with_us)
+    suffixes = col_series.apply(lambda x: x.split("_", 2)[1])  # robust au cas de plusieurs '_'
+    ordered_suffixes = suffixes.unique()
+
+    # 2) Groupement des colonnes par suffixe
+    Xt: Dict[str, pd.DataFrame] = {}
+    for suffix in ordered_suffixes:
+        cols_for_suffix = [c for c in cols_with_us if c.split("_", 2)[1] == suffix]
+        subdf = df1[cols_for_suffix].copy()
+
+        if verbose:
+            print(f"Suffixe = {suffix} → shape {subdf.shape}")
+
+        # Colonnes tests (UMAP) vs non-tests
+        test_cols = [c for c in subdf.columns if c.endswith(test_suffix)]
+
+        if len(test_cols) == 0:
+            if verbose:
+                print(f"[WARN] Aucun test '{test_suffix}' pour suffixe '{suffix}', "
+                      f"pas d'UMAP (on garde colonnes non-tests).")
+            Xt[suffix] = subdf.fillna(0)
+            if verbose:
+                print(suffix, "done")
+            continue
+
+        subdf_tests = subdf[test_cols].fillna(0)
+
+        reducer = umap.UMAP(
+            n_components=n_components,
+            n_neighbors=n_neighbors,
+            min_dist=min_dist,
+            metric=metric,
+            random_state=random_state,
+        )
+        embedding = reducer.fit_transform(subdf_tests.values)
+
+        umap_cols = [f"UMAP_{i+1}_{test_suffix}" for i in range(n_components)]
+        subdf_umap = pd.DataFrame(embedding, columns=umap_cols, index=subdf.index)
+
+        # Normalisation [0,1]
+        scaler = MinMaxScaler(feature_range=(0, 1))
+        umap_norm = scaler.fit_transform(subdf_umap)
+        subdf_umap_norm = pd.DataFrame(umap_norm, index=subdf_umap.index, columns=subdf_umap.columns)
+
+        # Concat UMAP normalisé + colonnes non-tests
+        Xt[suffix] = pd.concat(
+            [subdf_umap_norm, subdf.drop(columns=test_cols)],
+            axis=1,
+            ignore_index=True  # on aligne par position, pas par nom
+        ).fillna(0)
+
+        if verbose:
+            print(suffix, "done")
+
+    return Xt
+
+
+def build_windows_from_Xt(
+    Xt: Dict[str, pd.DataFrame],
+    *,
+    w: int = 3,               # nb d'étapes passées à concaténer
+    H: int = 0,               # horizon de la cible (0=étape courante, 1=suivante, ...)
+    target_col_idx: int = 3,  # colonne cible dans Xt[suffix]
+    verbose: bool = True,
+) -> Tuple[List[np.ndarray], List[np.ndarray]]:
+    """
+    À partir de Xt (dict suffix -> DataFrame), construit des fenêtres horizontales.
+
+    Pour chaque i >= w :
+      X_i = concat( Xt[keys[i-1]], Xt[keys[i-2]], ..., Xt[keys[i-w]] ) sur les colonnes
+      y_i = Xt[keys[min(i+H, len(keys)-1)]].iloc[:, target_col_idx]
+
+    Retourne
+    --------
+    X_array_hori : liste de np.ndarray (features fenêtrées)
+    y_array_hori : liste de np.ndarray (cibles alignées)
+    """
+    keys: List[str] = list(Xt.keys())  # ordre d'insertion de Xt
+    if len(keys) < w + 1:
+        if verbose:
+            print(f"[WARN] Pas assez d'étapes ({len(keys)}) pour une fenêtre w={w}.")
+        return [], []
+
+    # Sanity: toutes les frames doivent avoir le même nombre de lignes et le même index
+    n_rows = next(iter(Xt.values())).shape[0]
+    for k, dfk in Xt.items():
+        if dfk.shape[0] != n_rows:
+            raise ValueError(f"Xt['{k}'] a {dfk.shape[0]} lignes ≠ {n_rows}. "
+                             "Les DataFrames doivent être alignés par index.")
+
+    X_frames: List[pd.DataFrame] = []
+    y_series: List[pd.Series] = []
+
+    for i in range(w, len(keys)):
+        # Concat des w étapes précédentes (ordre du plus récent au plus ancien)
+        frames = [Xt[keys[i - j]] for j in range(1, w + 1)]
+        Xi = pd.concat(frames, axis=1)
+
+        # Cible à l'horizon i+H (bornée à la dernière étape)
+        tgt_key_idx = min(i + H, len(keys) - 1)
+        tgt_df = Xt[keys[tgt_key_idx]]
+
+        if target_col_idx >= tgt_df.shape[1]:
+            raise IndexError(
+                f"target_col_idx={target_col_idx} hors limites pour Xt['{keys[tgt_key_idx]}'] "
+                f"({tgt_df.shape[1]} colonnes)."
+            )
+
+        yi = tgt_df.iloc[:, target_col_idx]
+
+        X_frames.append(Xi)
+        y_series.append(yi)
+
+    X_array_hori: List[np.ndarray] = [df.values for df in X_frames]
+    y_array_hori: List[np.ndarray] = [s.values for s in y_series]
+    return X_array_hori, y_array_hori
+
+
 def build_X_s(df_sub: pd.DataFrame, prefixes: list, static_cols: list, n: int) -> np.ndarray:
     # on garde student_id + les n premiers items
     dyn_cols = [

@@ -125,7 +125,7 @@ def run_analysis_w(
                 test_size=0.20/0.80, stratify=y_tmp, random_state=42
             )
             # print(df0.loc[idx_tr].columns)
-            X_tr   = build_X(df0.loc[idx_tr], prefixes,static_cols,  n)
+            X_tr   = build_X(df0.loc[idx_tr], prefixes, static_cols,  n)
             X_cal  = build_X(df0.loc[idx_cal], prefixes, static_cols, n)
             X_test = build_X(df0.loc[idx_test], prefixes, static_cols, n)
 
@@ -822,7 +822,7 @@ def train_combined_models(dataframe, X_arr, y_cible, models_c_ng, models_lg,
     y_cible : array-like
         Labels cibles
     models_c_ng : dict
-        Dictionnaire des modèles MCP avec clés ('RF', n, 'vanilla')
+        Dictionnaire des modèles MCP avec clés ('GB', n, 'vanilla')
     models_lg : dict
         Dictionnaire des modèles SPCI avec clés n
     threshold : float
