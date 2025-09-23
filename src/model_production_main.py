@@ -279,7 +279,7 @@ def main(
 
     models_comb2 = train_combined_models(
         dataframe=df3,
-        X_arr=X_arr, 
+        X_arr=X_arrlg, 
         y_cible=y_cible2,
         models_c_ng=models_c_ng,
         models_lg=models_lg,
