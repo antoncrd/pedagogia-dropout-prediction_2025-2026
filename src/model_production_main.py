@@ -199,7 +199,7 @@ def main(
 
     # Run analysis with clustering and next grade
     df_detail, df_agg, y_cible3, models_c_ng = run_analysis_w(
-        df=df3, y=y_cible2, do_plot=False
+        df=df3, y=y_cible2, do_plot=False, N=N
     )
     models["+ clustering + SPCI next grade"] = models_c_ng
 

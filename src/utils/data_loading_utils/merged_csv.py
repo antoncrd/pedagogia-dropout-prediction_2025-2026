@@ -5,7 +5,7 @@ from functools import reduce
 import pandas as pd
 
 # ─── Ordre souhaité des fichiers (noms de fichiers attendus dans indir) ─── #
-ORDERED_FILES = [
+ORDERED_FILES = [ # 2024
     # C-Pool – Days 01 → 13
     "B-CPE-100_cpoolday01.csv",
     "B-CPE-100_cpoolday02.csv",
