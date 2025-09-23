@@ -70,7 +70,9 @@ def load_and_preprocess_data(data_file: str, year: int, normalize_marks: bool = 
     if year == 24:
         df = df[nb_nan_par_ligne < 495]
     elif year == 23:
-        df = df[nb_nan_par_ligne < 130]
+        df = df[nb_nan_par_ligne < 415]
+    elif year == 22:
+        df = df[nb_nan_par_ligne < 356]
 
     df["source"] = "real"
     print("Data preprocessing done")
