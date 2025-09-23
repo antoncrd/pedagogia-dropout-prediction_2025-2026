@@ -259,7 +259,7 @@ def main(
 
     models_comb1 = train_combined_models(
         dataframe=df2,
-        X_arr=X_arr, 
+        X_arr=X_arrlg, 
         y_cible=y_cible2,
         models_c_ng=models_c,
         models_lg=models_lg,
@@ -342,7 +342,7 @@ if __name__ == "__main__":
     parser.add_argument(
         "--w2",
         type=int,
-        default=10,
+        default=8,
         help="Window size for second analysis.",
     )
     parser.add_argument(
