@@ -18,12 +18,10 @@ import numpy as np
 import pandas as pd
 from typing import Optional
 from pathlib import Path
+import joblib 
 
 from tqdm import tqdm
 
-
-# Import functions from models_production_utils (assuming they are defined there)
-# If not, they need to be defined or imported properly
 from utils.models_production_utils import (
     run_analysis_w,
     OneSidedSPCI_LGBM_Offline,
@@ -34,7 +32,7 @@ from utils.models_production_utils import (
 from utils.model_production_data_processing_utils import(
     save_models_bundle,
     cluster_with_min_size,
-    build_umap_windows_by_suffix,
+    # build_umap_windows_by_suffix,
     compute_threshold_kmeans,
     build_umap_by_suffix,
     build_windows_from_Xt
@@ -108,7 +106,8 @@ def main(
     w2: int = 10,
     alpha1: float = 0.1,
     alpha2: float = 0.1,
-    N: Optional[int] = None
+    N: Optional[int] = None,
+    only_comb: bool = False
 ) -> None:
     """
     Main function to run the model production pipeline.
@@ -124,6 +123,8 @@ def main(
         alpha2 (float): Alpha for second SPCI model.
         N (int) : Horizon maximal d'entraînement.
     """
+
+
     # Load and preprocess data
     df1 = load_and_preprocess_data(data_file, year)
 
@@ -136,6 +137,89 @@ def main(
         df1, X, n_clusters=n_clusters, min_cluster_size=min_cluster_size, random_state=42
     )
     print("Réassignement des petits clusters done")
+
+
+    if only_comb:
+        print("Entrainement des modèles combinés...")
+        year_str = str(year)
+        data_spci_ng = Path(f"/app/data/DATA_SPCI_ng_{year}.csv")
+        y_true_csv   = Path(f"/app/data/y_true_{year}.csv")
+        lg_dir       = Path(f"/app/data/DATA_SPCI_lg_{year}")
+        p_models_c   = Path(f"/app/models/models_clustering_{year}.joblib")
+        p_models_cng = Path(f"/app/models/models_clustering_SPCI_ng_{year}.joblib")
+        p_models_lg  = Path(f"/app/models/models_SPCI_lg_{year}.joblib")
+
+        # Vérifs rapides
+        missing = [p for p in [data_spci_ng, y_true_csv, p_models_c, p_models_cng, p_models_lg] if not p.exists()]
+        if missing:
+            raise FileNotFoundError(
+                "Mode 'only_comb' : artefacts manquants. Relance d'abord le pipeline complet.\n"
+                + "\n".join(f"- {m}" for m in missing)
+            )
+        if not lg_dir.exists():
+            raise FileNotFoundError(f"Dossier introuvable: {lg_dir} (CSV X_arrlg)")
+
+        # Chargements
+        df3 = pd.read_csv(data_spci_ng)
+        y_cible2 = pd.read_csv(y_true_csv).squeeze()
+        models_c   = joblib.load(p_models_c)
+        models_cng = joblib.load(p_models_cng)
+        models_lg  = joblib.load(p_models_lg)
+
+        # Seuil + prefixes (simples)
+        threshold = compute_threshold_kmeans(df3)
+        mark_cols = [c for c in df3.columns if c.endswith("mark")]
+        prefixes = list(dict.fromkeys(c.rsplit("_", 1)[0] for c in mark_cols))
+        static_cols = []
+
+        # Reconstruit X_arrlg depuis les CSV sauvegardés: DATA_SPCI_lg_{n}.csv
+        files = sorted(lg_dir.glob("DATA_SPCI_lg_*.csv"), key=lambda p: int(p.stem.split("_")[-1]))
+        # X_arrlg indexé comme dans le code original: élément i correspond à n = i + w2
+        X_arrlg = [None] * ( (len(files) + 1) )
+        for f in files:
+            n = int(f.stem.split("_")[-1])  # ..._lg_{n}.csv
+            i = n - w2
+            if i >= 1:
+                X_arrlg[i] = pd.read_csv(f).values
+
+        # Entraîne les deux variantes combinées
+        print("[only_comb] Entraînement CP + SPCI last grade combined ...")
+        models_comb1 = train_combined_models(
+            dataframe=df2,              # df3 contient déjà 'clusters'
+            X_arr=X_arrlg,
+            y_cible=getattr(y_cible2, "values", y_cible2),
+            models_c_ng=models_c,       # CP simple
+            models_lg=models_lg,
+            threshold=threshold,
+            w2=w2,
+            prefixes=prefixes,
+            static_cols=static_cols,
+            n_estimators=500,
+            random_state=42,
+            N=N,
+        )
+        save_models_bundle(models_comb1, f"/app/models/models_comb1_{year}.joblib", compress=3)
+
+        print("[only_comb] Entraînement CP_ng + SPCI last grade combined ...")
+        models_comb2 = train_combined_models(
+            dataframe=df3,
+            X_arr=X_arrlg,
+            y_cible=getattr(y_cible2, "values", y_cible2),
+            models_c_ng=models_cng,     # CP + next grade
+            models_lg=models_lg,
+            threshold=threshold,
+            w2=w2,
+            prefixes=prefixes,
+            static_cols=static_cols,
+            n_estimators=500,
+            random_state=42,
+            N=N,
+        )
+        save_models_bundle(models_comb2, f"/app/models/models_comb2_{year}.joblib", compress=3)
+
+        print("✅ only_comb terminé (models_comb1_*.joblib et models_comb2_*.joblib).")
+        return
+    
 
     # Run analysis with clustering
     df_detail, df_agg, y_cible2, models_c = run_analysis_w(
@@ -192,8 +276,8 @@ def main(
         i for i in range(len(cols) - 1) if suffixes[i] != suffixes[i + 1]
     ][::-1]
     for i, ut in enumerate(reversed(U_t)):
-        loc = change_points[i]
-        col_name = f"{prefixes2[i]}_next_grade"
+        loc = change_points[i + 1]
+        col_name = f"{prefixes2[i + 1]}_next_grade"
         df3.insert(loc - 1, col_name, ut)
 
     df3["clusters"] = df2["clusters"]
@@ -338,13 +422,13 @@ if __name__ == "__main__":
     parser.add_argument(
         "--w1",
         type=int,
-        default=3,
+        default=4,
         help="Window size for first analysis.",
     )
     parser.add_argument(
         "--w2",
         type=int,
-        default=8,
+        default=10,
         help="Window size for second analysis.",
     )
     parser.add_argument(
@@ -365,6 +449,11 @@ if __name__ == "__main__":
         default=None,
         help="Horizon max d’entraînement.",
     )
+    parser.add_argument(
+        "--only_comb", action="store_true",
+        help="Entrainement des modèles combinés uniquement"
+    )
+    
     # Parse arguments
     args = parser.parse_args()
 
@@ -378,7 +467,8 @@ if __name__ == "__main__":
             w2=args.w2,
             alpha1=args.alpha1,
             alpha2=args.alpha2,
-            N = args.N
+            N=args.N,
+            only_comb=args.only_comb
         )
     except Exception as e:
         print(f"[ERROR] An error occurred: {e}")

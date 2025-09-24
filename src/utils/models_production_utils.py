@@ -876,7 +876,7 @@ def train_combined_models(dataframe, X_arr, y_cible, models_c_ng, models_lg,
     if static_cols is None:
         static_cols = []
     
-    total_slices = len(X_arr)
+    total_slices = len(X_arr) + w2
     stop = total_slices if N is None else min(int(N) + 1, total_slices)
     y_cible = np.asarray(y_cible, dtype=int).reshape(-1)
     for base_model in ['GB']:
