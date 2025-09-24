@@ -15,7 +15,7 @@ services:
       - ./models:/app/models:rw
     command: >
       python -u -m src.data_loading
-      --year 2024
+      --year 2025
       --data_dir /app/data
       --utils_dir /app/src/utils
     restart: "no"
@@ -51,12 +51,12 @@ services:
       - ./data:/app/data:rw         # CSV en entrée + .db en sortie
     command: [
       "python", "-u", "/app/src/csv_to_sqlite.py",
-      "--input_csv", "/app/data/DATA_2024_pred.csv",
+      "--input_csv", "/app/data/DATA_2025_pred_proj.csv",
       "--output_db", "/app/data/traces_metabase.db",
       "--table", "traces",
       "--if-exists", "replace",
       "--index", "email",
-      "--include-prefixes", "B-CPE-100, prediction",
+      "--include-prefixes", "G-CPE-100, prediction, UMAP, cluster",
       "--keep-cols", "email"
     ]
     restart: "no"
@@ -74,5 +74,4 @@ services:
       - ./metabase-data:/metabase-data         # persistance Metabase (H2)
       - ./data:/data:rw                        # tes .db SQLite accessibles (p.ex. /data/traces_metabase.db)
     depends_on:
-      csv-to-sqlite:
-        condition: service_completed_successfully
+      - csv-to-sqlite

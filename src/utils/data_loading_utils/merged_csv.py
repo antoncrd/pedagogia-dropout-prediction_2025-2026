@@ -5,38 +5,7 @@ from functools import reduce
 import pandas as pd
 
 # ─── Ordre souhaité des fichiers (noms de fichiers attendus dans indir) ─── #
-ORDERED_FILES = [ # 2024
-    # C-Pool – Days 01 → 13
-    "B-CPE-100_cpoolday01.csv",
-    "B-CPE-100_cpoolday02.csv",
-    "B-CPE-100_cpoolday03.csv",
-    "B-CPE-100_cpoolday04.csv",
-    "B-CPE-100_cpoolday05.csv",
-    "B-CPE-100_cpoolday06.csv",
-    "B-CPE-100_cpoolday07.csv",
-    "B-CPE-100_cpoolday08.csv",
-    "B-CPE-100_cpoolday09.csv",
-    "B-CPE-100_cpoolday10.csv",
-    "B-CPE-100_cpoolday11.csv",
-    "B-CPE-100_cpoolday12.csv",
-    "B-CPE-100_cpoolday13.csv",
 
-    # B-CPE-110, B-PSU-100 et B-CPE-210 : rendus alternés
-    "B-PSU-100_myls.csv",
-    "B-CPE-110_settingup.csv",
-    "B-PSU-100_mytop.csv",
-    "B-CPE-110_organized.csv",
-    "B-CPE-110_secured.csv",
-    "B-PSU-100_mysudo.csv",
-
-    # PSU-200, CPE-200 : rendus alternés
-    "B-PSU-200_minishell1.csv",
-    "B-CPE-200_robotfactory.csv",
-    "B-PSU-200_minishell2.csv",
-    "B-CPE-200_amazed.csv",
-    "B-PSU-200_42sh.csv",
-    # "B-CPE-200_corewar.csv"
-]
 
 def main():
     ap = argparse.ArgumentParser(description="Fusion horizontale des CSV par email, dans un ordre imposé.")
@@ -53,6 +22,57 @@ def main():
     if not indir.exists():
         raise SystemExit(f"❌ Le dossier d'entrée n'existe pas: {indir.resolve()}")
     out_path.parent.mkdir(parents=True, exist_ok=True)
+
+    if args.year == 2024:
+        ORDERED_FILES = [ # 2024
+        # C-Pool – Days 01 → 13
+        "B-CPE-100_cpoolday01.csv",
+        "B-CPE-100_cpoolday02.csv",
+        "B-CPE-100_cpoolday03.csv",
+        "B-CPE-100_cpoolday04.csv",
+        "B-CPE-100_cpoolday05.csv",
+        "B-CPE-100_cpoolday06.csv",
+        "B-CPE-100_cpoolday07.csv",
+        "B-CPE-100_cpoolday08.csv",
+        "B-CPE-100_cpoolday09.csv",
+        "B-CPE-100_cpoolday10.csv",
+        "B-CPE-100_cpoolday11.csv",
+        "B-CPE-100_cpoolday12.csv",
+        "B-CPE-100_cpoolday13.csv",
+
+        # B-CPE-110, B-PSU-100 et B-CPE-210 : rendus alternés
+        "B-PSU-100_myls.csv",
+        "B-CPE-110_settingup.csv",
+        "B-PSU-100_mytop.csv",
+        "B-CPE-110_organized.csv",
+        "B-CPE-110_secured.csv",
+        "B-PSU-100_mysudo.csv",
+
+        # PSU-200, CPE-200 : rendus alternés
+        "B-PSU-200_minishell1.csv",
+        "B-CPE-200_robotfactory.csv",
+        "B-PSU-200_minishell2.csv",
+        "B-CPE-200_amazed.csv",
+        "B-PSU-200_42sh.csv",
+        # "B-CPE-200_corewar.csv"
+    ]
+    elif args.year == 2025:
+        ORDERED_FILES = [ # 2025
+        # C-Pool – Days 01 → 13
+        "G-CPE-100_cpoolday01.csv",
+        "G-CPE-100_cpoolday02.csv",
+        "G-CPE-100_cpoolday03.csv",
+        "G-CPE-100_cpoolday04.csv",
+        "G-CPE-100_cpoolday05.csv",
+        "G-CPE-100_cpoolday06.csv",
+        "G-CPE-100_cpoolday07.csv",
+        "G-CPE-100_cpoolday08.csv",
+        "G-CPE-100_cpoolday09.csv",
+        "G-CPE-100_cpoolday10.csv",
+        "G-CPE-100_cpoolday11.csv",
+        "G-CPE-100_cpoolday12.csv",
+        "G-CPE-100_cpoolday13.csv"
+        ]
 
     ordered_paths = [indir / f for f in ORDERED_FILES]
     missing = [p.name for p in ordered_paths if not p.exists()]

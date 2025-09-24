@@ -88,8 +88,10 @@ def prepare_features(df: pd.DataFrame, year: int) -> pd.DataFrame:
     Returns:
         pd.DataFrame: Feature matrix X.
     """
-
-    dfcpool = df[[c for c in df.columns if c.startswith("B-CPE-100")]]
+    if year == 2025:
+        dfcpool = df[[c for c in df.columns if c.startswith("G-CPE-100")]]
+    else:
+        dfcpool = df[[c for c in df.columns if c.startswith("B-CPE-100")]]
     pat = re.compile(r"B-CPE-100_cpoolday\d+_\d{2} - task\d+_passed")
     cols_keep = [c for c in dfcpool.columns if not pat.match(c)]
     dfcpool_mark = dfcpool[cols_keep]
