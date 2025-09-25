@@ -553,3 +553,17 @@ def compute_threshold_kmeans(
         threshold = low_center * best_prop_curr
 
     return float(threshold)
+
+def map_pset_to_label(pset: np.ndarray) -> np.ndarray:
+    """
+    Map conformal prediction sets (boolean array of shape (n, 2))
+    to integer labels:
+      [True, False]  -> 0
+      [False, True]  -> 1
+      [True, True]   -> 2
+    """
+    labels = np.full(pset.shape[0], -1, dtype=int)  # init with -1 (invalid)
+    labels[(pset[:, 0] == True) & (pset[:, 1] == False)] = 0
+    labels[(pset[:, 0] == False) & (pset[:, 1] == True)] = 1
+    labels[(pset[:, 0] == True) & (pset[:, 1] == True)] = 2
+    return labels
