@@ -39,7 +39,7 @@ from utils.model_production_data_processing_utils import(
 )
 
 # Default constants
-DEFAULT_YEAR = 24
+DEFAULT_YEAR = 2024
 DEFAULT_N_CLUSTERS = 4
 DEFAULT_MIN_CLUSTER_SIZE = 50
 DEFAULT_DATA_FILE = "data/DATA.csv"
@@ -65,11 +65,11 @@ def load_and_preprocess_data(data_file: str, year: int, normalize_marks: bool = 
 
     # Handle NaN values based on year
     nb_nan_par_ligne = df.isna().sum(axis=1)
-    if year == 24:
+    if year == 2024:
         df = df[nb_nan_par_ligne < 495]
-    elif year == 23:
+    elif year == 2023:
         df = df[nb_nan_par_ligne < 415]
-    elif year == 22:
+    elif year == 2022:
         df = df[nb_nan_par_ligne < 356]
 
     df["source"] = "real"
