@@ -46,7 +46,7 @@ def select_columns(df: pd.DataFrame, prefixes: list[str], keep_cols: list[str]) 
     return df[cols]
 
 
-def coerce_numeric(df: pd.DataFrame, skip: Iterable[str] = ("email",)) -> pd.DataFrame:
+def coerce_numeric(df: pd.DataFrame, skip: Iterable[str] = ("email", "city")) -> pd.DataFrame:
     out = df.copy()
     # Colonnes à convertir (toutes sauf celles à exclure)
     to_convert = [c for c in out.columns if c not in set(skip)]
@@ -86,7 +86,7 @@ def main():
     df = select_columns(df, prefixes, keep_cols)
 
     # 3) Conversion numérique
-    df = coerce_numeric(df, skip=["email"])
+    df = coerce_numeric(df, skip=["email", "city"])
 
     # 4) Écriture SQLite
     conn = sqlite3.connect(args.output_db)

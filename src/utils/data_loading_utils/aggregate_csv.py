@@ -11,20 +11,34 @@ Options :
     --indir   dossier source      (défaut : .)
     --outdir  dossier destination (défaut : agg)
     --filter  motif shell *joker* (facultatif)
-
-Exemples
---------
-# Tout regrouper dans ./agg/
-python aggregate_csv.py --indir csv_out
-
-# Ne regrouper que les projets B-CPE-110_*
-python aggregate_csv.py --indir csv_out --filter "B-CPE-110_*"
 """
 from pathlib import Path
 import argparse
 import fnmatch
 import pandas as pd
+import re
 from collections import defaultdict
+
+# ────────────── helpers ────────────── #
+def extract_city_from_filename(name: str) -> str:
+    stem = Path(name).stem                     # ex. "B-CPE-100_star_NCY-1-1"
+    if "_" not in stem:
+        return ""
+    suffix = stem.rsplit("_", 1)[-1]            # ex. "NCY-1-1"
+    token = suffix.split("-", 1)[0]            # ex. "NCY"
+    return token.strip().upper()
+
+def add_city_column(df: pd.DataFrame, city: str) -> pd.DataFrame:
+    """Ajoute/complète la colonne 'city'. L’insère après 'email' si présent."""
+    if "city" not in df.columns:
+        if "email" in df.columns:
+            pos = df.columns.get_loc("email") + 1
+            df.insert(pos, "city", city)
+        else:
+            df["city"] = city
+    else:
+        df["city"] = df["city"].fillna(city)
+    return df
 
 # ────────────── CLI ────────────── #
 ap = argparse.ArgumentParser(description="Agrégation verticale de CSV par préfixe")
@@ -50,7 +64,14 @@ if not groups:
 
 # ────────── concaténation & écriture ────── #
 for prefix, files in groups.items():
-    df_combined = pd.concat([pd.read_csv(f) for f in files], ignore_index=True)
+    dfs = []
+    for i, f in enumerate(files):
+        df = pd.read_csv(f)
+        city = extract_city_from_filename(f.name)
+        df = add_city_column(df, city)
+        dfs.append(df)
+
+    df_combined = pd.concat(dfs, ignore_index=True)
     out_path = args.outdir / f"{prefix}.csv"
     df_combined.to_csv(out_path, index=False)
     print(f"✅  {prefix}.csv : {len(files)} fichier(s) ➜ {df_combined.shape[0]} lignes")

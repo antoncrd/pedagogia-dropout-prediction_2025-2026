@@ -56,7 +56,7 @@ services:
       "--table", "traces",
       "--if-exists", "replace",
       "--index", "email",
-      "--include-prefixes", "G-CPE-100, prediction, UMAP, cluster",
+      "--include-prefixes", "G-CPE-100, city, prediction, UMAP, cluster",
       "--keep-cols", "email"
     ]
     restart: "no"

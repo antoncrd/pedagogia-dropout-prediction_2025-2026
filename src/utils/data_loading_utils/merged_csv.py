@@ -88,12 +88,16 @@ def main():
         df = pd.read_csv(p)
         if "email" not in df.columns:
             raise ValueError(f"{p.name} ne contient pas de colonne 'email'")
-        df = df.drop_duplicates(subset=["email"])
+        df = df.drop_duplicates(subset=["email", "city"])
         prefix = p.stem
-        df = df.rename(columns={c: f"{prefix}_{c}" for c in df.columns if c != "email"})
+        df = df.rename(columns={c: f"{prefix}_{c}" for c in df.columns if c not in ["email", "city"]})
         dfs.append(df)
 
-    merged = reduce(lambda left, right: pd.merge(left, right, on="email", how="outer"), dfs)
+    KEYS = ["email", "city"]
+    merged = reduce(
+    lambda left, right: pd.merge(left, right, on=KEYS, how="outer"),
+    dfs
+    )
 
     merged.to_csv(out_path, index=False)
     print(f"✅ CSV fusionné : {out_path}  –  {merged.shape[0]} lignes × {merged.shape[1]} colonnes")
