@@ -1,6 +1,11 @@
 # Pedagogia Dropout Prediction · 2025–2026
 
 Système modulaire pour **prévoir le risque de décrochage** à partir des traces pédagogiques (projets, tests unitaires, notes). 
+Le pipeline couvre : téléchargement automatique des données depuis Google Drive, ingestion des données, normalisation en CSV, agrégation/merge par étudiant, puis **production d'un modèle** (clustering + prédiction séquentielle) avec métriques.
+
+> Tech: Python 3.12, scikit‑learn, UMAP, Docker (optionnel).gogia Dropout Prediction · 2025–2026
+
+Système modulaire pour **prévoir le risque de décrochage** à partir des traces pédagogiques (projets, tests unitaires, notes). 
 Le pipeline couvre : ingestion des données, normalisation en CSV, agrégation/merge par étudiant, puis **production d’un modèle** (clustering + prédiction séquentielle) avec métriques.
 
 > Tech: Python 3.12, scikit‑learn, UMAP, Docker (optionnel).
@@ -60,7 +65,44 @@ TOKEN_PASS=yyyyyyyyyyyyyyyy
 
 ---
 
-## 🚀 Installation rapide (sans Docker)
+## � Téléchargement automatique des données
+
+Le système inclut un **microservice de téléchargement** qui récupère automatiquement le fichier CSV depuis Google Drive.
+
+### Utilisation rapide
+
+**Windows (PowerShell):**
+```powershell
+.\download_csv.ps1
+```
+
+**Linux/Mac (Bash):**
+```bash
+./download_csv.sh
+```
+
+**Ou via Docker Compose:**
+```bash
+docker compose up csv-downloader --build
+```
+
+Le fichier sera téléchargé dans `./data/DATA_2025_pred_proj.csv`.
+
+### Configuration manuelle
+
+Vous pouvez aussi utiliser le microservice directement :
+
+```bash
+python src/csv_downloader.py \
+  --url "https://drive.google.com/file/d/1ZeJ2f1qfpENc-gIwYGiQsVM5nCGaTQkG/view?usp=drive_link" \
+  --output "./data/DATA_2025_pred_proj.csv" \
+  --retries 3 \
+  --verify
+```
+
+---
+
+## �🚀 Installation rapide (sans Docker)
 
 ```bash
 # 1) Cloner et se placer dans le dossier
