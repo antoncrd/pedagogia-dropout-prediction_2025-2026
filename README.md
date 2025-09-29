@@ -1,3 +1,18 @@
+# 🚀 Commandes de lancement rapides
+
+Pour lancer le pipeline avec Docker :
+
+```bash
+# 1) Télécharger les données depuis Google Drive
+docker compose up csv-downloader --build
+
+# 2) Convertir en SQLite pour Metabase
+docker compose run --rm csv-to-sqlite
+
+# 3) Redémarrer Metabase pour voir les données actualisées
+docker compose restart metabase
+```
+
 # Pedagogia Dropout Prediction · 2025–2026
 
 Système modulaire pour **prévoir le risque de décrochage** à partir des traces pédagogiques (projets, tests unitaires, notes). 
