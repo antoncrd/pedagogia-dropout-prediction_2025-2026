@@ -69,19 +69,8 @@ TOKEN_PASS=yyyyyyyyyyyyyyyy
 
 Le système inclut un **microservice de téléchargement** qui récupère automatiquement le fichier CSV depuis Google Drive.
 
-### Utilisation rapide
 
-**Windows (PowerShell):**
-```powershell
-.\download_csv.ps1
-```
-
-**Linux/Mac (Bash):**
-```bash
-./download_csv.sh
-```
-
-**Ou via Docker Compose:**
+**via Docker Compose:**
 ```bash
 docker compose up csv-downloader --build
 ```
